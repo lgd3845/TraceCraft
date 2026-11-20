@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   BookOpen,
@@ -21,12 +21,13 @@ import {
 } from "lucide-react";
 import Home from "./components/Home";
 import Library from "./components/Library";
-import BraceletStudio from "./modules/bracelet/BraceletStudio";
-import BeadsStudio from "./modules/beads/BeadsStudio";
-import GiftBoxStudio from "./modules/gift-box/GiftBoxStudio";
 import { StudioContext } from "./lib/studio";
 import { readArtworks, writeArtworks } from "./lib/storage";
 import type { Artwork, ArtworkDraft, Route } from "./lib/types";
+
+const BraceletStudio = lazy(() => import("./modules/bracelet/BraceletStudio"));
+const BeadsStudio = lazy(() => import("./modules/beads/BeadsStudio"));
+const GiftBoxStudio = lazy(() => import("./modules/gift-box/GiftBoxStudio"));
 
 const routes: Route[] = ["home", "bracelet", "beads", "gift-box", "library"];
 const routeNames: Record<Route, string> = {
@@ -54,6 +55,7 @@ function readLocation() {
 
 export default function App() {
   const [location, setLocation] = useState(readLocation);
+  const [navigationId, setNavigationId] = useState(0);
   const [initial] = useState(() => {
     try {
       return { artworks: readArtworks(localStorage), error: false };
@@ -62,6 +64,7 @@ export default function App() {
     }
   });
   const [artworks, setArtworks] = useState<Artwork[]>(initial.artworks);
+  const artworksRef = useRef(artworks);
   const [notification, setNotification] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const guide = useRef<HTMLDialogElement>(null);
@@ -80,14 +83,26 @@ export default function App() {
       `${window.location.pathname}${query.size ? `?${query}` : ""}`,
     );
     setLocation({ route: next, artworkId: id ?? null });
+    setNavigationId(value => value + 1);
     setMobileNav(false);
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
 
   useEffect(() => {
-    const onPopState = () => setLocation(readLocation());
+    const onPopState = () => {
+      setLocation(readLocation());
+      setNavigationId(value => value + 1);
+      setMobileNav(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNav(false);
+    };
     window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
   useEffect(() => {
     if (!notification) return;
@@ -110,8 +125,13 @@ export default function App() {
         notify("先给这份作品起个名字吧。");
         return null;
       }
-      const existing = artworks.find((work) => work.id === existingId);
-      if (!existing && artworks.length >= 40) {
+      const currentArtworks = artworksRef.current;
+      if (draft.kind === "gift-box" && draft.data.items.some(item => !currentArtworks.some(work => work.id === item.artworkId && work.kind !== "gift-box"))) {
+        notify("礼盒中的原作品已被删除，请重新加入作品后再保存。");
+        return null;
+      }
+      const existing = currentArtworks.find((work) => work.id === existingId);
+      if (!existing && currentArtworks.length >= 40) {
         notify("作品库已满，请先导出并删除不再需要的作品。");
         return null;
       }
@@ -123,10 +143,11 @@ export default function App() {
       } as Artwork;
       const next = [
         artwork,
-        ...artworks.filter((work) => work.id !== artwork.id),
+        ...currentArtworks.filter((work) => work.id !== artwork.id),
       ];
       try {
         writeArtworks(localStorage, next);
+        artworksRef.current = next;
         setArtworks(next);
         notify("心意已收藏，随时可以继续创作。");
         return artwork;
@@ -135,13 +156,13 @@ export default function App() {
         return null;
       }
     },
-    [artworks, initial.error, notify],
+    [initial.error, notify],
   );
 
   const deleteArtwork = useCallback(
     (id: string) => {
       if (
-        artworks.some(
+        artworksRef.current.some(
           (work) =>
             work.kind === "gift-box" &&
             work.data.items.some((item) => item.artworkId === id),
@@ -150,16 +171,17 @@ export default function App() {
         notify("这份作品还在礼盒里，请先从礼盒中移除并保存。");
         return;
       }
-      const next = artworks.filter((work) => work.id !== id);
+      const next = artworksRef.current.filter((work) => work.id !== id);
       try {
         writeArtworks(localStorage, next);
+        artworksRef.current = next;
         setArtworks(next);
         notify("作品已删除。");
       } catch {
         notify("删除失败，请检查浏览器存储权限。");
       }
     },
-    [artworks, notify],
+    [notify],
   );
 
   return (
@@ -182,7 +204,7 @@ export default function App() {
             onClick={() => setMobileNav(false)}
           />
         )}
-        <aside className={`sidebar ${mobileNav ? "is-open" : ""}`}>
+        <aside id="studio-navigation" className={`sidebar ${mobileNav ? "is-open" : ""}`}>
           <button
             className="brand"
             onClick={() => navigate("home")}
@@ -270,6 +292,8 @@ export default function App() {
               <button
                 className="icon-button mobile-menu"
                 aria-label="打开导航"
+                aria-expanded={mobileNav}
+                aria-controls="studio-navigation"
                 onClick={() => setMobileNav(true)}
               >
                 <Menu size={20} />
@@ -303,15 +327,11 @@ export default function App() {
             )}
             {route === "home" && <Home />}
             {route === "library" && <Library />}
-            {route === "bracelet" && (
-              <BraceletStudio key={artworkId ?? "new-bracelet"} />
-            )}
-            {route === "beads" && (
-              <BeadsStudio key={artworkId ?? "new-beads"} />
-            )}
-            {route === "gift-box" && (
-              <GiftBoxStudio key={artworkId ?? "new-box"} />
-            )}
+            <Suspense fallback={<div className="empty-state" role="status">正在铺好你的创作工作台…</div>}>
+              {route === "bracelet" && <BraceletStudio key={`${artworkId ?? "new"}:${navigationId}`} />}
+              {route === "beads" && <BeadsStudio key={`${artworkId ?? "new"}:${navigationId}`} />}
+              {route === "gift-box" && <GiftBoxStudio key={`${artworkId ?? "new"}:${navigationId}`} />}
+            </Suspense>
           </main>
         </div>
         {notification && (

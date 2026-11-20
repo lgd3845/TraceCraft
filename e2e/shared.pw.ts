@@ -32,8 +32,14 @@ test("首页、指南与移动端导航可用且没有横向溢出", async ({ pa
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  if (page.viewportSize()!.width < 700)
-    await page.getByRole("button", { name: "打开导航" }).click();
+  if (page.viewportSize()!.width < 700) {
+    const menu = page.getByRole("button", { name: "打开导航" });
+    await menu.click();
+    await expect(menu).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveAttribute("aria-expanded", "false");
+    await menu.click();
+  }
   await page.getByRole("button", { name: "我的作品 0", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "第一份心意，正在等你" }),
