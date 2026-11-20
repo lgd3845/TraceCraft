@@ -1,0 +1,198 @@
+.giftbox-studio { --giftbox-lilac: #eeeaf1; --giftbox-text: #58634f; }
+.giftbox-heading { align-items: flex-end; margin-bottom: 25px; }
+.giftbox-heading .eyebrow { color: #a192a7; font-size: 8px; letter-spacing: 1.6px; }
+.giftbox-heading h1 { margin-top: 9px; font-size: 29px; }
+.giftbox-heading-dot { color: #bc7d5e; margin-left: 3px; }
+.giftbox-heading-right { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.giftbox-save-state { font-size: 9px; color: #8d9583; }
+.giftbox-actions { align-items: center; }
+.giftbox-actions .btn { min-height: 42px; padding: 11px 16px; }
+.giftbox-export-group { display: flex; align-items: stretch; }
+.giftbox-export-group select { border-radius: 9px 0 0 9px; border-right: 0; padding: 8px; background: #fff; font-size: 10px; width: 64px; color: #7f8975; }
+.giftbox-export-group .btn { border-radius: 0 9px 9px 0; padding-left: 12px; }
+.giftbox-workspace { display: grid; grid-template-columns: 205px minmax(0, 1fr) 228px; align-items: start; gap: 16px; min-width: 0; border: 0; padding: 0; margin: 0; }
+.giftbox-library-column, .giftbox-center-column, .giftbox-details-column { min-width: 0; display: grid; gap: 16px; align-content: start; }
+.giftbox-workspace .panel { min-width: 0; padding: 18px 16px; }
+.giftbox-workspace .panel-title { font-size: 12px; gap: 7px; margin-bottom: 15px; }
+.giftbox-workspace .panel-title > svg { color: #8c9a7b; }
+.giftbox-workspace .panel-title small { font-size: 8px; white-space: nowrap; }
+.giftbox-section-intro { font-size: 9px; line-height: 1.8; color: #9a9e91; margin: -5px 0 15px; }
+.giftbox-library-list { display: grid; gap: 9px; max-height: 470px; overflow: auto; padding: 3px; margin: -3px; scrollbar-width: thin; scrollbar-color: #d8ddce transparent; }
+.giftbox-library-item { display: flex; align-items: center; width: 100%; gap: 9px; background: #fff; border: 1px solid #eceee5; border-radius: 10px; padding: 8px 6px; text-align: left; min-width: 0; }
+.giftbox-library-item:hover { background: #f8faf4; border-color: #b6c1a6; box-shadow: 0 3px 9px #83956b0c; }
+.giftbox-library-item > svg { margin-left: auto; flex-shrink: 0; color: #9daa8a; }
+.giftbox-library-image { width: 49px; height: 53px; background: #f0f2e8; border-radius: 7px; padding: 4px; position: relative; flex-shrink: 0; }
+.giftbox-library-image-beads { background: #faf0e6; }
+.giftbox-library-image img { width: 100%; height: 100%; object-fit: contain; }
+.giftbox-added-count { position: absolute; right: -3px; top: -4px; display: grid; place-items: center; border-radius: 50%; background: #869677; color: white; width: 16px; height: 16px; font-size: 8px; border: 2px solid white; }
+.giftbox-library-copy { min-width: 0; }
+.giftbox-library-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 500; }
+.giftbox-library-copy small { display: block; font-size: 8px; color: #a3a997; margin-top: 7px; }
+.giftbox-library-empty { text-align: center; padding: 2px 0 7px; }
+.giftbox-empty-illustration { position: relative; width: 105px; height: 105px; margin: 9px auto 14px; display: grid; place-items: center; color: #a5947f; background: radial-gradient(circle, #fffdf5 0 32%, #f1ede4 33% 54%, transparent 55%); }
+.giftbox-empty-orbit { position: absolute; inset: 7px; border: 1px dashed #c7cdb9; border-radius: 50%; transform: rotate(-20deg); }
+.giftbox-empty-illustration::after, .giftbox-empty-illustration::before { content: ''; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #d6b39b; top: 20px; left: 8px; border: 2px solid #fff; }
+.giftbox-empty-illustration::before { width: 7px; height: 7px; top: auto; left: auto; right: 16px; bottom: 9px; background: #b4bba6; }
+.giftbox-empty-leaf { position: absolute; bottom: 12px; left: 10px; transform: rotate(-32deg); color: #8e9e7c; fill: #eef2e5; }
+.giftbox-library-empty h3 { font-size: 10px; font-weight: 550; color: #717e64; margin-bottom: 9px; }
+.giftbox-library-empty p { font-size: 9px; line-height: 1.95; color: #a2a894; margin-bottom: 20px; }
+.giftbox-library-empty .btn { width: 100%; margin: 0 0 8px; padding: 10px 9px; min-height: 39px; font-size: 10px; }
+.giftbox-library-note { display: flex; align-items: flex-start; gap: 6px; border-top: 1px solid #edf0e5; padding-top: 13px; margin-top: 13px; font-size: 8px; line-height: 1.9; color: #a0a78f; }
+.giftbox-library-note svg { flex-shrink: 0; margin-top: 2px; }
+.giftbox-create-links { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 15px; font-size: 8px; color: #a1a993; }
+.giftbox-create-links button { display: inline-flex; align-items: center; gap: 3px; background: #f3f5ef; border-radius: 5px; min-height: 30px; padding: 3px 7px; font-size: 9px; color: #7d8b6b; }
+.giftbox-layers { display: grid; gap: 5px; max-height: 255px; overflow-y: auto; scrollbar-width: thin; }
+.giftbox-layer { display: flex; align-items: center; border-radius: 7px; border: 1px solid transparent; }
+.giftbox-layer-active { background: #f6f0e9; border-color: #eadbcd; }
+.giftbox-layer-select { background: none; text-align: left; min-width: 0; flex: 1; padding: 10px 6px; display: flex; gap: 6px; align-items: center; font-size: 9px; color: #7e8576; }
+.giftbox-layer-select > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.giftbox-layer-dot { width: 5px; height: 5px; border: 1px solid #bbc3ae; border-radius: 50%; flex-shrink: 0; }
+.giftbox-layer-active .giftbox-layer-dot { background: #bb7f61; border-color: #bb7f61; }
+.giftbox-layer .giftbox-delete { flex-shrink: 0; width: 29px; height: 33px; }
+.giftbox-delete:hover { background: #faf0e9; color: #b5634a; }
+.giftbox-stage { min-width: 0; position: relative; border: 1px solid #e4e1e7; border-radius: 14px; overflow: hidden; background: #f0ecef; }
+.giftbox-stage-heading { display: flex; justify-content: space-between; align-items: center; padding: 18px 19px 0; font-size: 10px; color: #81738b; background: #f6f2ee; }
+.giftbox-stage-heading > span { display: flex; gap: 7px; align-items: center; }
+.giftbox-live-dot { width: 5px; height: 5px; border-radius: 50%; background: #a4ab96; box-shadow: 0 0 0 3px #e7e9df; }
+.giftbox-stage-meta { color: #a69da9; font-size: 8px; letter-spacing: .4px; }
+.giftbox-stage-meta i { height: 8px; width: 1px; background: #d5ccd8; margin: 0 3px; }
+.giftbox-scene { display: block; width: 100%; height: auto; user-select: none; }
+.giftbox-scene-editable { touch-action: none; }
+.giftbox-placed-item { cursor: grab; touch-action: none; outline: none; }
+.giftbox-placed-item:focus-visible .giftbox-selection-ring { opacity: 1; stroke-width: 2.5px; }
+.giftbox-is-dragging .giftbox-placed-item { cursor: grabbing; }
+.giftbox-canvas-help { padding: 13px 17px; border-top: 1px solid #e1dde4; display: flex; align-items: center; gap: 7px; font-size: 9px; color: #9b91a1; background: #f7f5f7; }
+.giftbox-canvas-help > svg { flex-shrink: 0; }
+.giftbox-view-tag { margin-left: auto; border: 1px solid #e2dde6; border-radius: 4px; padding: 3px 6px; white-space: nowrap; font-size: 8px; }
+.giftbox-dimension-note { display: flex; gap: 8px; align-items: flex-start; padding: 0 3px; color: #9ba18f; font-size: 9px; line-height: 1.9; margin-top: -4px; }
+.giftbox-dimension-note > svg { flex-shrink: 0; margin-top: 2px; color: #a8ad9d; }
+.giftbox-dimension-note strong { color: #8d907e; font-weight: 500; }
+.giftbox-item-heading { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 18px; }
+.giftbox-item-heading > div { min-width: 0; }
+.giftbox-item-heading .eyebrow { font-size: 7px; color: #aaa695; letter-spacing: 1.3px; }
+.giftbox-item-heading h2 { margin-top: 7px; font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
+.giftbox-transform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+.giftbox-slider { display: block; min-width: 0; }
+.giftbox-slider > span { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #7d8871; margin-bottom: 3px; gap: 8px; }
+.giftbox-slider output { font-variant-numeric: tabular-nums; font-size: 9px; color: #ae8d74; }
+.giftbox-slider input { display: block; height: 24px; margin: 0; cursor: pointer; }
+.giftbox-transform-actions { display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap; }
+.giftbox-transform-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #e7eade; border-radius: 6px; background: #fafbf6; font-size: 9px; padding: 8px 10px; min-height: 33px; color: #7d8870; }
+.giftbox-transform-actions button:hover:not(:disabled) { background: #eef2e7; }
+.giftbox-transform-actions button:last-child { margin-left: auto; }
+.giftbox-keyboard-hint { margin-top: 12px; font-size: 9px; }
+.giftbox-selection-empty { display: flex; align-items: center; gap: 13px; padding: 7px 2px; color: #a0aa91; }
+.giftbox-selection-empty > svg { flex-shrink: 0; }
+.giftbox-selection-empty h2 { font-size: 11px; font-weight: 500; color: #859178; margin-bottom: 6px; }
+.giftbox-selection-empty p { font-size: 9px; line-height: 1.8; color: #a8ae9d; }
+.giftbox-packaging-panel .field { margin-bottom: 19px; }
+.giftbox-packaging-panel .field-label { font-size: 10px; margin-bottom: 10px; }
+.giftbox-packaging-panel input[type=text] { font-size: 10px; padding: 10px; }
+.giftbox-shape { width: 100%; }
+.giftbox-shape button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 31px; padding: 7px 6px; }
+.giftbox-shape-rectangle, .giftbox-shape-square { width: 15px; height: 10px; border: 1px solid currentColor; border-radius: 2px; }
+.giftbox-shape-square { width: 11px; height: 11px; }
+.giftbox-color-name { font-size: 8px; color: #a9ad9f; }
+.giftbox-color-field .swatches { gap: 9px; }
+.giftbox-swatch { display: grid; place-items: center; width: 29px; height: 29px; color: #fffaf0; text-shadow: 0 1px 1px #685e40; }
+.giftbox-swatch svg { filter: drop-shadow(0 1px 1px #65533d88); }
+.giftbox-swatch:hover { transform: translateY(-2px); }
+.giftbox-card-field { padding-top: 16px; border-top: 1px solid #edefe5; }
+.giftbox-card-field .field-label > span { display: inline-flex; align-items: center; gap: 6px; color: #a48b75; }
+.giftbox-card-field .field-label small { color: #b6b4a7; font-size: 8px; }
+.giftbox-card-field textarea { width: 100%; padding: 11px; background: #fffdf7; border-color: #eae4d5; font-size: 10px; line-height: 1.9; min-height: 87px; }
+.giftbox-card-field > p { font-size: 8px; color: #b4ac99; margin-top: 7px; }
+.giftbox-materials-panel { background: #fcfdf9; }
+.giftbox-materials { padding: 0; margin: 0; list-style: none; display: grid; gap: 12px; }
+.giftbox-materials li, .giftbox-materials-contents > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 9px; color: #8f9981; line-height: 1.7; }
+.giftbox-materials li > span:last-child, .giftbox-materials-contents > div > span:last-child { flex-shrink: 0; color: #9da98e; font-variant-numeric: tabular-nums; }
+.giftbox-materials-contents { display: grid; gap: 7px; margin: 14px 0; border-top: 1px dashed #e3e7d8; padding-top: 13px; max-height: 160px; overflow-y: auto; scrollbar-width: thin; }
+.giftbox-materials-contents > div > span:first-child { overflow-wrap: anywhere; }
+.giftbox-materials-contents > p { font-size: 9px; color: #a8af9c; line-height: 1.8; }
+.giftbox-materials-download { width: 100%; font-size: 10px; padding: 10px; }
+.giftbox-materials-panel > .hint { font-size: 8px; margin-top: 9px; }
+.giftbox-warning { font-size: 9px; color: #b2684c; line-height: 1.8; margin-bottom: 12px; }
+.giftbox-footer { border-top: 1px solid #e8ebe1; padding-top: 19px; margin-top: 29px; display: flex; align-items: center; gap: 7px; font-size: 9px; color: #a8b09c; }
+.giftbox-footer > span:last-child { margin-left: auto; font-size: 7px; letter-spacing: 1.2px; color: #b4b9ac; }
+.giftbox-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.giftbox-loading { animation: giftbox-spin 1s linear infinite; }
+@keyframes giftbox-spin { to { transform: rotate(360deg); } }
+@media (min-width: 1650px) {
+  .giftbox-workspace { grid-template-columns: 228px minmax(0, 1fr) 250px; gap: 21px; }
+  .giftbox-workspace .panel { padding: 21px 19px; }
+  .giftbox-library-image { width: 59px; height: 61px; }
+}
+@media (max-width: 1250px) {
+  .giftbox-workspace { grid-template-columns: 188px minmax(0, 1fr); }
+  .giftbox-details-column { grid-column: 1 / -1; grid-template-columns: 1.15fr 1fr; }
+  .giftbox-packaging-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; }
+  .giftbox-packaging-panel > .panel-title, .giftbox-packaging-panel > .giftbox-card-field { grid-column: 1 / -1; }
+  .giftbox-stage-heading { padding-top: 19px; }
+}
+@media (max-width: 960px) {
+  .giftbox-heading { align-items: flex-start; }
+  .giftbox-heading-right { align-items: flex-start; width: 100%; gap: 9px; }
+  .giftbox-actions { width: auto; }
+  .giftbox-workspace { grid-template-columns: 174px minmax(0, 1fr); gap: 13px; }
+  .giftbox-workspace .panel { padding: 16px 13px; }
+  .giftbox-library-item { flex-wrap: wrap; gap: 7px; }
+  .giftbox-library-image { width: 42px; height: 45px; }
+  .giftbox-library-copy { flex: 1; }
+  .giftbox-library-item > svg { display: none; }
+  .giftbox-canvas-help { font-size: 8px; padding: 11px; }
+  .giftbox-view-tag { display: none; }
+  .giftbox-transform-grid { gap: 10px 15px; }
+  .giftbox-transform-actions { gap: 5px; }
+  .giftbox-transform-actions button { padding: 7px; font-size: 8px; }
+  .giftbox-transform-actions button:last-child { margin-left: 0; }
+  .giftbox-details-column { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .giftbox-packaging-panel { display: block; }
+  .giftbox-library-empty h3 { font-size: 9px; }
+}
+@media (max-width: 760px) {
+  .giftbox-workspace { grid-template-columns: minmax(0, 1fr); }
+  .giftbox-center-column { grid-row: 1; }
+  .giftbox-library-column { grid-row: 2; }
+  .giftbox-details-column { grid-row: 3; }
+  .giftbox-library-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 250px; }
+  .giftbox-library-item { min-height: 73px; }
+  .giftbox-library-empty { display: grid; grid-template-columns: 1fr 1fr; column-gap: 9px; align-items: center; }
+  .giftbox-empty-illustration { grid-column: 1 / -1; margin-top: 0; margin-bottom: 9px; height: 86px; width: 86px; }
+  .giftbox-library-empty h3, .giftbox-library-empty p { grid-column: 1 / -1; }
+  .giftbox-library-empty h3 { font-size: 11px; }
+  .giftbox-library-empty p { margin-bottom: 14px; }
+  .giftbox-library-empty .btn { font-size: 9px; }
+  .giftbox-library-note { margin-top: 6px; }
+}
+@media (max-width: 520px) {
+  .giftbox-heading { margin-bottom: 20px; gap: 17px; }
+  .giftbox-heading h1 { font-size: 27px; }
+  .giftbox-heading-right { gap: 10px; }
+  .giftbox-save-state { font-size: 8px; }
+  .giftbox-actions { width: 100%; gap: 8px; flex-wrap: nowrap; }
+  .giftbox-actions > .btn { flex: 1; padding: 10px 12px; min-height: 42px; }
+  .giftbox-export-group .btn { font-size: 10px; padding: 10px 11px; }
+  .giftbox-export-group select { font-size: 9px; width: 57px; padding-left: 7px; }
+  .giftbox-stage-heading { padding: 15px 15px 0; font-size: 9px; }
+  .giftbox-stage-meta { font-size: 7px; }
+  .giftbox-center-column { gap: 13px; }
+  .giftbox-canvas-help { font-size: 8px; padding: 12px 13px; }
+  .giftbox-dimension-note { font-size: 8px; margin-top: 0; }
+  .giftbox-details-column { grid-template-columns: minmax(0, 1fr); }
+  .giftbox-workspace .panel { padding: 18px 16px; }
+  .giftbox-packaging-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+  .giftbox-packaging-panel > .field { grid-column: 1 / -1; }
+  .giftbox-packaging-panel .field-label { font-size: 11px; }
+  .giftbox-packaging-panel input[type=text], .giftbox-card-field textarea { font-size: 12px; }
+  .giftbox-shape button { min-height: 34px; }
+  .giftbox-swatch { width: 34px; height: 34px; }
+  .giftbox-color-field .swatches { gap: 15px; }
+  .giftbox-color-name { font-size: 9px; }
+  .giftbox-transform-actions button { font-size: 9px; min-height: 37px; padding: 8px; }
+  .giftbox-slider input { height: 30px; }
+  .giftbox-layer .giftbox-delete { height: 40px; width: 36px; }
+  .giftbox-layer-select { min-height: 40px; font-size: 10px; }
+  .giftbox-materials li, .giftbox-materials-contents > div { font-size: 10px; }
+  .giftbox-footer { font-size: 8px; gap: 6px; align-items: flex-start; }
+  .giftbox-footer > span:last-child { display: none; }
+}
