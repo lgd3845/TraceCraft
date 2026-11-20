@@ -12,10 +12,7 @@ function Ribbon({ d, fill, moving = false }: { d: string; fill: string; moving?:
   </g>
 }
 
-/** One continuous broad strip with local overpasses, not a string or a bow.
- * Along the open knot the crossings alternate under/over/under/over/under/over.
- * Overpasses repaint both paper edges, visibly interrupting the lower band.
- */
+// Repaint the upper bands so all three crossings retain their alternating over/under order.
 function LooseKnot({ threaded, colors, moving = false }: { threaded: boolean; colors: GuideColors; moving?: boolean }) {
   return <g data-knot={threaded ? 'single-overhand' : 'one-loop'}>
     <Ribbon d={threaded ? THREADED_KNOT : LOOSE_LOOP} fill={colors.primary} />

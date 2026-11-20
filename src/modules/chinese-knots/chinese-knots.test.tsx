@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { guideSheetSvg } from '../../lib/craftGuide'
 import { renderKnotDiagram } from './diagrams'
-import { CORE_X, PAPER, halfGeometry, knotCount, workingX } from './geometry'
+import { CORE_X, OVERHAND_OVERPASSES, OVERHAND_PATH, PAPER, halfGeometry, knotCount, workingX } from './geometry'
 import { BASIC_STEPS, CHINESE_KNOT_PROJECTS, KNOT_COLORS, SLIDING_STEPS } from './lessons'
 
 const render = (project: number, step: number, hints = true, palette = 0) => renderToStaticMarkup(CHINESE_KNOT_PROJECTS[project].renderDiagram(step, KNOT_COLORS[palette], hints))
@@ -126,6 +126,28 @@ describe('square-knot working geometry and crossing layers', () => {
     expect(workingX(181, true)).toBe(419)
   })
 
+  it('keeps the loop-entry crossing behind A, including the denser slider rows', () => {
+    for (const mirrored of [false, true]) {
+      for (const compact of [false, true]) {
+        for (const height of [24, 40]) {
+          const geometry = halfGeometry(mirrored, 88, compact, height)
+          const values = geometry.bExit.match(/[\d.]+/g)!.map(Number)
+          const density = compact ? height / 40 : 1
+          const t = compact ? (8 + Math.sqrt(1312)) / 52 : Math.sqrt(36 / 45)
+          const rimY = 88 + (compact ? 14 + 18 * t - 9 * t * t : 126 - 41 * (1 - t) ** 2) * density
+          const width = compact ? 7 * density : 10
+          const clearance = compact ? 2 * density : 7
+          for (let sample = 0; sample <= 100; sample++) {
+            const u = sample / 100
+            const x = compact ? (1 - u) ** 3 * values[0] + 3 * (1 - u) ** 2 * u * values[2] + 3 * (1 - u) * u ** 2 * values[4] + u ** 3 * values[6] : values[0]
+            const y = compact ? (1 - u) ** 3 * values[1] + 3 * (1 - u) ** 2 * u * values[3] + 3 * (1 - u) * u ** 2 * values[5] + u ** 3 * values[7] : values[1] * (1 - u) + values[2] * u
+            expect(Math.hypot(x - geometry.exitX, y - rimY)).toBeGreaterThan(width + clearance / 2)
+          }
+        }
+      }
+    }
+  })
+
   it('connects tightened half endpoints to the next mirrored half without renaming A/B', () => {
     for (const height of [24, 40]) {
       for (let index = 0; index < 5; index++) {
@@ -221,6 +243,30 @@ describe('SVG contract for boards, small cards and complete-guide export', () =>
     }
     expect(render(1, 10)).toContain('data-fixture="clip"')
     expect(render(1, 11)).not.toContain('data-fixture="clip"')
+  })
+
+  it('separates stopper position symbols from a three-crossing overhand tying inset', () => {
+    const svg = render(1, 10)
+    expect(svg.match(/data-stopper-symbol="true"/g)).toHaveLength(2)
+    expect(svg).toContain('灰色圆点只标止结位置')
+    expect(svg).toContain('data-overhand-inset="thread-once"')
+    expect(svg.match(/data-overhand-crossing=/g)).toHaveLength(3)
+    expect(OVERHAND_OVERPASSES).toHaveLength(3)
+    const numbers = OVERHAND_PATH.match(/[\d.]+/g)!.map(Number)
+    const vertices = Array.from({ length: numbers.length / 2 }, (_, index) => ({ x: numbers[index * 2], y: numbers[index * 2 + 1] }))
+    let crossings = 0
+    for (let i = 0; i < vertices.length - 1; i++) {
+      for (let j = i + 2; j < vertices.length - 1; j++) {
+        const a = vertices[i], b = vertices[i + 1], c = vertices[j], d = vertices[j + 1]
+        const rx = b.x - a.x, ry = b.y - a.y, sx = d.x - c.x, sy = d.y - c.y
+        const divisor = rx * sy - ry * sx
+        if (!divisor) continue
+        const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / divisor
+        const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / divisor
+        if (t > 0 && t < 1 && u > 0 && u < 1) crossings++
+      }
+    }
+    expect(crossings).toBe(3)
   })
 
   it('exposes only completed knots, even while the next half is loose', () => {

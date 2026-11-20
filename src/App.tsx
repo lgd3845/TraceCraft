@@ -6,6 +6,9 @@ import {
   ChevronRight,
   CircleHelp,
   CircleDashed,
+  Cable,
+  Origami,
+  Scissors,
   Flower2,
   Gift,
   Grid2X2,
@@ -28,14 +31,25 @@ import type { Artwork, ArtworkDraft, Route } from "./lib/types";
 const BraceletStudio = lazy(() => import("./modules/bracelet/BraceletStudio"));
 const BeadsStudio = lazy(() => import("./modules/beads/BeadsStudio"));
 const GiftBoxStudio = lazy(() => import("./modules/gift-box/GiftBoxStudio"));
+const PaperCuttingStudio = lazy(() => import("./modules/paper-cutting/PaperCuttingStudio"));
+const OrigamiStudio = lazy(() => import("./modules/origami/OrigamiStudio"));
+const ChineseKnotsStudio = lazy(() => import("./modules/chinese-knots/ChineseKnotsStudio"));
 
-const routes: Route[] = ["home", "bracelet", "beads", "gift-box", "library"];
+const routes: Route[] = ["home", "bracelet", "beads", "gift-box", "library", "paper-cutting", "origami", "chinese-knots"];
+const guideNav = [
+  { route: "paper-cutting" as const, title: "剪纸小课堂", icon: Scissors },
+  { route: "origami" as const, title: "折纸小课堂", icon: Origami },
+  { route: "chinese-knots" as const, title: "中国结与编绳", icon: Cable },
+];
 const routeNames: Record<Route, string> = {
   home: "创作灵感",
   bracelet: "串饰工坊",
   beads: "照片转拼豆",
   "gift-box": "礼盒摆盘",
   library: "我的作品",
+  "paper-cutting": "剪纸小课堂",
+  origami: "折纸小课堂",
+  "chinese-knots": "中国结与编绳",
 };
 const nav = [
   { route: "home" as const, title: "创作灵感", icon: House },
@@ -245,6 +259,12 @@ export default function App() {
                 )}
               </button>
             ))}
+            <div className="nav-label nav-guide-label">跟着图解学 <span>CRAFT GUIDES</span></div>
+            {guideNav.map((item) => (
+              <button key={item.route} className={`nav-item ${route === item.route ? "active" : ""}`} onClick={() => navigate(item.route)} aria-current={route === item.route ? "page" : undefined}>
+                <item.icon size={19} strokeWidth={1.7} /><span>{item.title}</span>{route === item.route && <span className="nav-active-dot" />}
+              </button>
+            ))}
             <div className="nav-divider" />
             <button
               className={`nav-item ${route === "library" ? "active" : ""}`}
@@ -331,6 +351,9 @@ export default function App() {
               {route === "bracelet" && <BraceletStudio key={`${artworkId ?? "new"}:${navigationId}`} />}
               {route === "beads" && <BeadsStudio key={`${artworkId ?? "new"}:${navigationId}`} />}
               {route === "gift-box" && <GiftBoxStudio key={`${artworkId ?? "new"}:${navigationId}`} />}
+              {route === "paper-cutting" && <PaperCuttingStudio key={navigationId} />}
+              {route === "origami" && <OrigamiStudio key={navigationId} />}
+              {route === "chinese-knots" && <ChineseKnotsStudio key={navigationId} />}
             </Suspense>
           </main>
         </div>
@@ -360,7 +383,7 @@ export default function App() {
               <div>
                 <h3>先设计，再动手</h3>
                 <p>
-                  在串饰工坊搭配材质和颜色，或上传照片生成拼豆图纸。所有预览都在浏览器中完成。
+                  搭配串饰、把照片转成拼豆，或跟着剪纸、折纸与编绳图解从零练习。所有预览都在浏览器中完成。
                 </p>
               </div>
             </article>

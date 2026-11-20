@@ -221,8 +221,7 @@ function renderPaperDiagram(kind: 'heart' | 'flower', step: number, colors: Guid
   else if (!flower && (index === 2 || index === 3)) body = <HeartPattern colors={colors} cutting={index === 3} hints={showHints} />
   else body = flower ? <FlowerUnfold colors={colors} final={final} hints={showHints} /> : <HeartUnfold colors={colors} final={final} hints={showHints} />
 
-  // Keep all presentation inside the SVG: exports serialize only innerHTML.
-  // No defs/IDs: cards, live previews and every export step coexist in the DOM.
+  // Inline presentation and no shared IDs keep simultaneous previews and exports self-contained.
   return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" role="img" aria-label={`${flower ? '连体四瓣花' : '对折爱心'}：${stages[index]}`}>
     <title>{`${flower ? '连体四瓣花' : '对折爱心'} · ${stages[index]}`}</title>
     <desc>原创折剪示意，非等比例剪裁模板。蓝色虚线是折边，红色实线是剪线；彩色保留，浅灰废料。请先用废纸试剪。</desc>

@@ -10,8 +10,7 @@ export interface CutProfile {
   readonly corner?: Point
 }
 
-// Coordinates are instructional, not a true-size cutting template.
-// The closing edge belongs to the retained paper, NEVER to the cut path.
+// These schematic coordinates retain the closing fold; it must never join the cut path.
 export const HEART_PROFILE = {
   name: 'heart', width: 120, height: 240,
   start: [0, 62],
@@ -21,8 +20,7 @@ export const HEART_PROFILE = {
   ],
 } as const satisfies CutProfile
 
-// O is the original sheet centre. Both 22-unit bridges stay uncut.
-// Swapping x/y reverses these cubics, so the diagonal petal is symmetric.
+// Preserve both 22-unit bridges at O; the cubics mirror across x=y.
 export const FLOWER_PROFILE = {
   name: 'flower', width: 120, height: 120,
   corner: [0, 0], start: [22, 0],

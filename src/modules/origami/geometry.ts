@@ -14,8 +14,7 @@ export function reflect(point: Point, [a, b]: readonly [Point, Point]): Point {
   return [2 * (a[0] + t * dx) - point[0], 2 * (a[1] + t * dy) - point[1]]
 }
 
-// A diamond of radius 100. The lower-tip destination is the NEW top edge,
-// y=-50, not the original top (y=-100) or the original centre (y=0).
+// The lower tip targets the new top edge at y=-50, not the original top or centre.
 export const HEART = {
   diamond: [[0, -100], [100, 0], [0, 100], [-100, 0]],
   topOutline: [[-50, -50], [50, -50], [100, 0], [0, 100], [-100, 0]],
@@ -54,8 +53,7 @@ export function pentagon(radius = 64): Point[] {
 export const STAR_VERTICES = pentagon()
 export const STAR_MIDPOINTS = STAR_VERTICES.map((vertex, index) => midpoint(vertex, STAR_VERTICES[(index + 1) % 5]))
 
-// Each arrow starts outside an EDGE midpoint, directed towards the centre.
-// Insetting those five midpoints leaves the five original vertices as tips.
+// Inset the five edge midpoints, leaving the original vertices as star tips.
 export const STAR_PINCHES = STAR_MIDPOINTS.map((point, edge) => ({
   edge,
   midpoint: point,
@@ -74,8 +72,7 @@ export function edgeTail(edge: number, length: number): Point[] {
   return [a, b, [b[0] + offset[0], b[1] + offset[1]], [a[0] + offset[0], a[1] + offset[1]]]
 }
 
-// Intersection of convex polygons: draw a rectangular paper band within the
-// pentagon without clipPaths/IDs (the same diagram appears several times).
+// Clip bands geometrically to avoid ID collisions between simultaneous diagram instances.
 export function clipToPentagon(subject: readonly Point[]): Point[] {
   let result = [...subject]
   for (let index = 0; index < 5; index++) {

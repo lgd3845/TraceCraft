@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, CheckCheck, ChevronRight, Clock3, Info, RotateCcw, Scissors, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, CheckCheck, ChevronRight, Clock3, Info, Maximize2, RotateCcw, Scissors, ShieldCheck, Sparkles, X } from 'lucide-react'
 import type { CraftProject, GuideColorOption } from '../lib/craftGuide'
 import { guideProgress, guideSheetSvg } from '../lib/craftGuide'
 import { downloadFile } from '../lib/export'
@@ -23,15 +23,23 @@ export default function CraftGuide({ title, kicker, description, projects, color
   const [colorIndex, setColorIndex] = useState(0)
   const [showHints, setShowHints] = useState(true)
   const sheet = useRef<HTMLDivElement>(null)
+  const enlarged = useRef<HTMLDialogElement>(null)
   const project = projects[projectIndex]
   const step = project.steps[stepIndex]
   const colors = colorOptions[colorIndex]
   const progress = guideProgress(completed, project.steps.length)
 
   function chooseProject(index: number) {
+    if (index === projectIndex) return
     setProjectIndex(index)
     setStepIndex(0)
     setCompleted([])
+  }
+
+  function enlargeDiagram() {
+    enlarged.current?.showModal()
+    const viewport = enlarged.current?.querySelector<HTMLElement>('.craft-zoom-content')
+    if (viewport) viewport.scrollLeft = (viewport.scrollWidth - viewport.clientWidth) / 2
   }
 
   function downloadGuide() {
@@ -40,7 +48,15 @@ export default function CraftGuide({ title, kicker, description, projects, color
       notify('图解尚未就绪，请稍后再试。')
       return
     }
-    downloadFile(guideSheetSvg(title, project, diagrams.map(diagram => diagram.innerHTML)), `${project.title}-GiftCraft完整图解.svg`, 'image/svg+xml;charset=utf-8')
+    const fragments = diagrams.map(diagram => {
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      for (const { name, value } of diagram.attributes) {
+        if (!['xmlns', 'viewBox', 'width', 'height', 'role', 'aria-label'].includes(name)) group.setAttribute(name, value)
+      }
+      for (const child of diagram.childNodes) group.appendChild(child.cloneNode(true))
+      return new XMLSerializer().serializeToString(group)
+    })
+    downloadFile(guideSheetSvg(title, project, fragments), `${project.title}-GiftCraft完整图解.svg`, 'image/svg+xml;charset=utf-8')
     notify('完整图解已下载，包含全部步骤、检查要点和参考来源。')
   }
 
@@ -67,7 +83,7 @@ export default function CraftGuide({ title, kicker, description, projects, color
       <section className="craft-learning" aria-label={`${project.title}分步教程`}>
         <div className="craft-lesson-heading"><div><span className="eyebrow">YOUR LITTLE HANDMADE MOMENT</span><h2>{project.title}</h2><p>{project.description}</p></div><span className="craft-level">{project.level}</span></div>
         <div className="craft-board">
-          <div className="craft-board-toolbar"><span>步骤图解 <i>STEP {String(stepIndex + 1).padStart(2, '0')}</i></span><label><input type="checkbox" checked={showHints} onChange={event => setShowHints(event.target.checked)} />显示辅助线</label></div>
+          <div className="craft-board-toolbar"><span>步骤图解 <i>STEP {String(stepIndex + 1).padStart(2, '0')}</i></span><div className="craft-board-options"><label><input type="checkbox" checked={showHints} onChange={event => setShowHints(event.target.checked)} />显示辅助线</label><button className="icon-button" aria-label="放大图解" title="放大图解" onClick={enlargeDiagram}><Maximize2 size={14} /></button></div></div>
           <div className="craft-diagram" role="img" aria-label={`${project.title}，第 ${stepIndex + 1} 步：${step.title}`}>{project.renderDiagram(stepIndex, colors, showHints)}</div>
           <div className="craft-board-caption"><Info size={12} /> 图示方向以当前画面为准；折线、剪线与上下穿压请配合文字查看。</div>
         </div>
@@ -83,6 +99,7 @@ export default function CraftGuide({ title, kicker, description, projects, color
         <section className="panel craft-sources"><h2 className="panel-title"><BookOpen size={14} />再看一种讲解</h2><p>卡在某一步？这些资料可以帮你核对基础技法。</p><ul>{project.sources.map(source => <li key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}<ArrowUpRight size={13} /></a></li>)}</ul><small>本站文字与 SVG 图解为重新编排绘制；链接仅作学习参考，不代表来源网站的授权或背书。</small></section>
       </aside>
     </div>
+    <dialog ref={enlarged} className="craft-zoom-dialog" aria-label="放大步骤图"><header><h2>{stepIndex + 1}. {step.title}</h2><button className="icon-button" aria-label="关闭放大图解" onClick={() => enlarged.current?.close()}><X size={18} /></button></header><div className="craft-zoom-content" tabIndex={0} aria-label="放大图解，可横向滚动查看">{project.renderDiagram(stepIndex, colors, showHints)}</div><p>小屏幕可左右滑动查看，按 Esc 或关闭按钮返回教程。</p></dialog>
     <div ref={sheet} hidden aria-hidden="true">{project.steps.map((_, index) => <div key={index}>{project.renderDiagram(index, colors, true)}</div>)}</div>
     <footer className="craft-footer"><ShieldCheck size={13} /> 无需登录 · 图解在本地生成 · 小朋友请在成人陪同下动手</footer>
   </div>

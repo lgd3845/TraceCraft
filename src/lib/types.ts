@@ -1,4 +1,4 @@
-export type Route = "home" | "bracelet" | "beads" | "gift-box" | "library";
+export type Route = "home" | "bracelet" | "beads" | "gift-box" | "library" | "paper-cutting" | "origami" | "chinese-knots";
 export type BeadMaterial = "glass" | "pearl" | "wood" | "crystal" | "spacer";
 
 export interface BraceletBead {

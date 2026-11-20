@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { GuideColors } from '../../lib/craftGuide'
-import { CORE_COLOR, CORE_X, PAPER, halfGeometry, knotCount, waitingBPath, workingX } from './geometry'
+import { CORE_COLOR, CORE_X, OVERHAND_OVERPASSES, OVERHAND_PATH, PAPER, halfGeometry, knotCount, waitingBPath, workingX } from './geometry'
 import type { CordPoint, KnotScene } from './geometry'
 
 const INK = '#4e574d'
@@ -12,9 +12,9 @@ const SCENE_LABELS: Record<KnotScene['kind'], string> = {
   stoppers: '两个独立止结', finished: '离腕试拉后使用',
 }
 
-function Cord({ d, color, width = 10, knockout = true, dashed = false }: { d: string; color: string; width?: number; knockout?: boolean; dashed?: boolean }) {
+function Cord({ d, color, width = 10, knockout = true, clearance = 7, dashed = false }: { d: string; color: string; width?: number; knockout?: boolean; clearance?: number; dashed?: boolean }) {
   return <>
-    {knockout && <path data-knockout="true" d={d} fill="none" stroke={PAPER} strokeWidth={width + 7} strokeLinecap="round" strokeLinejoin="round" />}
+    {knockout && <path data-knockout="true" d={d} fill="none" stroke={PAPER} strokeWidth={width + clearance} strokeLinecap="round" strokeLinejoin="round" />}
     <path d={d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dashed ? '7 7' : undefined} />
   </>
 }
@@ -49,19 +49,19 @@ function Cores({ top = 76, bottom = 338, sliding = false }: { top?: number; bott
   </g>
 }
 
-// The order is intentional, not cosmetic: B back < cores < A < B front.
-// Knockout strokes are opaque paper color, including in downloaded sheets.
+// Opaque knockouts preserve the crossing order: B back < cores < A < B front.
 function Half({ mirrored = false, top = 88, compact = false, height = 40, bightOnly = false, colors }: {
   mirrored?: boolean; top?: number; compact?: boolean; height?: number; bightOnly?: boolean; colors: GuideColors
 }) {
   const geometry = halfGeometry(mirrored, top, compact, height)
-  const width = compact ? 7 : 10
+  const density = compact ? height / 40 : 1
+  const width = compact ? 7 * density : 10
   return <g data-half-route={mirrored ? 'right-bight' : 'left-bight'} data-compact={compact}>
     <g data-layer="b-back"><Cord d={bightOnly ? waitingBPath(mirrored, top) : geometry.b} color={colors.secondary} width={width} knockout={false} /></g>
     <Cores top={geometry.coreTop} bottom={geometry.coreBottom} />
     <g data-layer="a-front"><Cord d={geometry.a} color={colors.primary} width={width} /></g>
     <g data-layer="b-over-a"><Cord d={geometry.bOverA} color={colors.secondary} width={width} /></g>
-    {!bightOnly && <g data-layer="b-exits-loop"><Cord d={geometry.bExit} color={colors.secondary} width={width} /></g>}
+    {!bightOnly && <g data-layer="b-exits-loop"><Cord d={geometry.bExit} color={colors.secondary} width={width} clearance={compact ? 2 * density : 7} /></g>}
   </g>
 }
 
@@ -88,8 +88,7 @@ function Clip({ sliding }: { sliding: boolean }) {
 }
 
 function BraceletBody() {
-  // One connection between the non-free ends, below the lower free tail.
-  // This wide view is omitted in close-up weaving steps to avoid extra crossings.
+  // Route the bracelet below the free tail to avoid an unintended extra crossing.
   return <g data-bracelet-connection="C1-top-to-C2-bottom">
     <Cord d="M284 76 C94 22 76 94 76 205 C76 343 195 370 316 370 V338" color={CORE_COLOR} width={9} />
   </g>
@@ -129,8 +128,7 @@ function Count({ halves }: { halves: number }) {
 }
 
 function Tucks({ colors }: { colors: GuideColors }) {
-  // This is an explicitly schematic back-tuck route, NOT a new core binding.
-  // Both ends stay outside x=284..316 and pass behind the existing knot rows.
+  // Keep schematic back-tuck routes outside the cores at x=284..316.
   return <g data-finish="working-ends-only">
     <g data-tuck-cord="A"><Cord d="M250 288 C224 312 236 266 268 278 V214" color={colors.primary} width={6} dashed /></g>
     <g data-tuck-cord="B"><Cord d="M350 288 C376 312 364 266 332 278 V214" color={colors.secondary} width={6} dashed /></g>
@@ -139,10 +137,23 @@ function Tucks({ colors }: { colors: GuideColors }) {
 
 function Stopper({ core, y }: { core: 'C1' | 'C2'; y: number }) {
   const x = CORE_X[core]
-  return <g data-stopper={core} data-stopper-x={x}>
-    <rect x={x - 25} y={y - 23} width="50" height="46" rx="9" fill={PAPER} />
-    <Cord d={`M${x} ${y - 24} C${x} ${y - 14} ${x - 20} ${y - 14} ${x - 16} ${y} C${x - 12} ${y + 17} ${x + 18} ${y + 15} ${x + 18} ${y - 1} C${x + 17} ${y - 15} ${x - 10} ${y - 10} ${x - 9} ${y + 2} C${x - 8} ${y + 13} ${x} ${y + 12} ${x} ${y + 24}`} color={CORE_COLOR} width={7} />
-    <Cord d={`M${x - 9} ${y + 2} C${x - 8} ${y + 13} ${x} ${y + 12} ${x} ${y + 20}`} color={CORE_COLOR} width={7} />
+  return <g data-stopper={core} data-stopper-x={x} data-stopper-symbol="true">
+    <title>止退单结位置符号，穿法见单结放大图</title>
+    <ellipse cx={x} cy={y} rx="13" ry="10" fill={CORE_COLOR} stroke={PAPER} strokeWidth="2" />
+  </g>
+}
+
+function OverhandInset() {
+  return <g data-overhand-inset="thread-once">
+    <rect x="20" y="99" width="222" height="229" rx="12" fill={PAPER} stroke="#ded5c4" />
+    <Label x={131} y={124} anchor="middle">每根尾绳各做一次</Label>
+    <Label x={131} y={151} anchor="middle" color={MUTED}>尾端从后穿环到前</Label>
+    <g transform="translate(-51 130) scale(.5)">
+      <Cord d={OVERHAND_PATH} color={CORE_COLOR} width={10} />
+      {OVERHAND_OVERPASSES.map((d, index) => <g key={d} data-overhand-crossing={index}><Cord d={d} color={CORE_COLOR} width={10} /></g>)}
+    </g>
+    <Label x={179} y={184}>尾端</Label><Label x={208} y={298} anchor="middle">绳身</Label>
+    <Label x={131} y={319} anchor="middle">穿一次，再均匀收紧</Label>
   </g>
 }
 
@@ -150,12 +161,12 @@ function SlidingFinish({ scene, colors, showHints }: { scene: KnotScene; colors:
   const tucked = ['tuck', 'stoppers', 'finished'].includes(scene.kind)
   const stopped = ['stoppers', 'finished'].includes(scene.kind)
   return <>
-    <BraceletBody />
+    {scene.kind === 'stoppers' ? <OverhandInset /> : <BraceletBody />}
     <Leads colors={colors} sliding top={144} />
     <Cores sliding />
-    {tucked && <Tucks colors={colors} />}
+    {tucked && scene.kind !== 'stoppers' && <Tucks colors={colors} />}
     <Band halves={scene.completedHalves} colors={colors} top={144} height={24} />
-    {tucked ? <>
+    {scene.kind !== 'stoppers' && (tucked ? <>
       <CordLabel cord="A" point={{ x: 268, y: 214 }} offsetX={-53} color={colors.primary} />
       <CordLabel cord="B" point={{ x: 332, y: 214 }} offsetX={53} color={colors.secondary} />
     </> : <>
@@ -163,7 +174,7 @@ function SlidingFinish({ scene, colors, showHints }: { scene: KnotScene; colors:
       <Cord d="M350 288 Q369 300 380 314" color={colors.secondary} width={8} />
       <CordLabel cord="A" point={{ x: 220, y: 314 }} color={colors.primary} below />
       <CordLabel cord="B" point={{ x: 380, y: 314 }} color={colors.secondary} below />
-    </>}
+    </>)}
     {stopped && <><Stopper core="C2" y={110} /><Stopper core="C1" y={313} /></>}
     <FreeCoreEnds />
     {showHints && <g data-hints="true">
@@ -174,10 +185,10 @@ function SlidingFinish({ scene, colors, showHints }: { scene: KnotScene; colors:
         <Arrow from={{ x: 367, y: 270 }} to={{ x: 367, y: 226 }} color={colors.secondary} dashed />
         <Label x={405} y={252}>先验证，再修尾</Label>
       </> : scene.kind === 'stoppers' ? <>
-        <Label x={375} y={114}>C2 自己打单结</Label>
-        <Label x={355} y={302}>C1 自己打单结</Label>
-        <Label x={108} y={210}>各自打结</Label>
-        <Label x={108} y={235}>两尾不相连</Label>
+        <Label x={375} y={114}>C2 单结位置</Label>
+        <Label x={355} y={302}>C1 单结位置</Label>
+        <Label x={367} y={180}>两尾各自打结</Label>
+        <Label x={367} y={207}>不把两尾绑一起</Label>
       </> : <>
         <Arrow from={{ x: 362, y: 130 }} to={{ x: 362, y: 89 }} />
         <Arrow from={{ x: 246, y: 309 }} to={{ x: 246, y: 347 }} />
@@ -200,9 +211,10 @@ export function renderKnotDiagram(scene: KnotScene, colors: GuideColors, showHin
   const top = 88 + scene.completedHalves * 40
   const geometry = halfGeometry(mirrored, top)
   const final = scene.kind === 'finished'
-  const footer = scene.kind === 'tuck' || scene.kind === 'stoppers'
-    ? '工作绳收尾，不穿入芯线'
-    : sliding ? 'C1 自由端向下 · C2 自由端向上 · 先练样验证' : 'A / B 跟随绳子 · 灰芯 C1 / C2 始终不换位'
+  const footer = scene.kind === 'stoppers'
+    ? '左图演示单结穿环 · 灰色圆点只标止结位置'
+    : scene.kind === 'tuck' ? '工作绳收尾，不穿入芯线'
+      : sliding ? 'C1 自由端向下 · C2 自由端向上 · 先练样验证' : 'A / B 跟随绳子 · 灰芯 C1 / C2 始终不换位'
 
   return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" fill="none" fontFamily="system-ui, sans-serif"
     data-knot-scene={scene.kind} data-completed-halves={scene.completedHalves} data-complete-knots={full} data-remaining-half={remainingHalf}>

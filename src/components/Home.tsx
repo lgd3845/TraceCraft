@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useStudio } from "../lib/studio";
 import CraftIllustration from "./CraftIllustration";
+import TraditionalWorkshops from "./TraditionalWorkshops";
 
 const workshops = [
   {
@@ -162,6 +163,7 @@ export default function Home() {
           ))}
         </div>
       </section>
+      <TraditionalWorkshops />
       <section className="journey-strip">
         <div className="journey-intro">
           <Flower2 size={29} strokeWidth={1.3} />
