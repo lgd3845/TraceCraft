@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BeadsData } from '../../lib/types'
-import { BEADS_PALETTE, cloneBeads, countMaterials, createExample, detectImageType, gridDimensions, hexToRgb, materialsCsv, MAX_IMAGE_BYTES, nearestColor, PALETTE_NOTICE, physicalSize, quantizePixels, resamplePattern, safeFilename, validateImageFile } from './beads'
+import { BEAD_EXAMPLES, BEADS_PALETTE, cloneBeads, countMaterials, createExample, detectImageType, gridDimensions, hexToRgb, materialsCsv, MAX_IMAGE_BYTES, nearestColor, paintCell, PALETTE_NOTICE, physicalSize, quantizePixels, resamplePattern, safeFilename, validateImageFile } from './beads'
 import { canvasPngBlob, decodeLocalImage, patternCanvas, renderPreview, sampleImage, thumbnailPng } from './beadsCanvas'
 
 const rgba = (...hexes: string[]) => new Uint8ClampedArray(hexes.flatMap(hex => [...hexToRgb(hex), 255]))
@@ -78,8 +78,10 @@ describe('palette matching and transparency', () => {
 })
 
 describe('original examples and self-contained saved artwork', () => {
-  it.each(['flower', 'heart'] as const)('creates a local %s example with a truthful material list', kind => {
+  it.each(BEAD_EXAMPLES.map(example => example.id))('creates a local %s example with a truthful material list', kind => {
     const data = createExample(kind)
+    expect(data.columns).toBe(24)
+    expect(data.rows).toBe(24)
     expect(data.cells.length).toBe(data.columns * data.rows)
     expect(data.sourceName).toContain('原创示例')
     expect(data.beadSize).toBe(5)
@@ -87,6 +89,16 @@ describe('original examples and self-contained saved artwork', () => {
     const materials = countMaterials(data)
     expect(materials.length).toBeGreaterThan(0)
     expect(materials.reduce((sum, color) => sum + color.count, 0)).toBe(data.cells.filter(Boolean).length)
+  })
+
+  it('paints and erases individual cells while updating the active palette', () => {
+    const start = createExample('capybara')
+    const painted = paintCell(start, 0, 'C12')
+    expect(painted.cells[0]).toBe('C12')
+    expect(painted.palette.some(color => color.code === 'C12')).toBe(true)
+    const erased = paintCell(painted, 0, '')
+    expect(erased.cells[0]).toBe('')
+    expect(erased.palette.some(color => color.code === 'C12')).toBe(false)
   })
   it('round-trips every cell, custom color, and measurement without a photo', () => {
     const data: BeadsData = { columns: 2, rows: 2, cells: ['CUSTOM', '', '', 'CUSTOM'], palette: [{ code: 'CUSTOM', name: '自定义颜色', color: '#123456' }], beadSize: 2.6, sourceName: '不再需要的原图.png' }
@@ -145,14 +157,14 @@ describe('materials export', () => {
     expect(csv).toContain('"\'=HYPERLINK(""bad"")"')
     expect(csv).toContain('"\'  =malicious.png"')
     expect(safeFilename('../my/photo:*?')).toBe('myphoto')
-    expect(safeFilename('')).toBe('GiftCraft-拼豆')
+    expect(safeFilename('')).toBe('TraceCraft-拼豆')
   })
 })
 
 function mockCanvas() {
   const gradient = { addColorStop: vi.fn() }
   const context = {
-    createLinearGradient: vi.fn(() => gradient), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(),
+    createLinearGradient: vi.fn(() => gradient), beginPath: vi.fn(), arc: vi.fn(), rect: vi.fn(), roundRect: vi.fn(), fill: vi.fn(), stroke: vi.fn(),
     fillRect: vi.fn(), strokeRect: vi.fn(), clearRect: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), fillText: vi.fn(),
     drawImage: vi.fn(), getImageData: vi.fn((_x: number, _y: number, width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) })),
   }

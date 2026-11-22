@@ -6,7 +6,7 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const PALETTE_NOTICE = '参考色号，非品牌官方色号；采购请核对实体色卡'
 export const ALPHA_NOTICE = '不透明度低于 50% 的像素留空，其余半透明像素与白色合成。'
 
-// Original GiftCraft reference palette, deliberately not a manufacturer's color system.
+// Original TraceCraft reference palette, deliberately not a manufacturer's color system.
 export const BEADS_PALETTE: BeadColor[] = [
   { code: 'C01', name: '雪白', color: '#FAF9F5' },
   { code: 'C02', name: '燕麦', color: '#E4D7BF' },
@@ -39,7 +39,30 @@ export const BEADS_PALETTE: BeadColor[] = [
 ]
 
 type RGB = readonly [number, number, number]
-export type ExampleKind = 'flower' | 'heart'
+export type ExampleKind =
+  | 'flower' | 'heart' | 'capybara' | 'cat-paw' | 'shiba'
+  | 'boba' | 'rainbow-cloud' | 'game-controller' | 'bunny' | 'koi'
+
+export interface ExampleMeta {
+  id: ExampleKind
+  label: string
+  title: string
+  sourceName: string
+}
+
+export const BEAD_EXAMPLES: readonly ExampleMeta[] = [
+  { id: 'flower', label: '春日雏菊', title: '小雏菊 · 示例', sourceName: '小雏菊 · 原创示例' },
+  { id: 'heart', label: '暖红爱心', title: '一颗心 · 示例', sourceName: '一颗心 · 原创示例' },
+  { id: 'capybara', label: '卡皮巴拉', title: '卡皮巴拉 · 示例', sourceName: '卡皮巴拉 · 原创示例' },
+  { id: 'cat-paw', label: '软萌猫爪', title: '软萌猫爪 · 示例', sourceName: '软萌猫爪 · 原创示例' },
+  { id: 'shiba', label: '微笑柴犬', title: '微笑柴犬 · 示例', sourceName: '微笑柴犬 · 原创示例' },
+  { id: 'boba', label: '珍珠奶茶', title: '珍珠奶茶 · 示例', sourceName: '珍珠奶茶 · 原创示例' },
+  { id: 'rainbow-cloud', label: '彩虹云朵', title: '彩虹云朵 · 示例', sourceName: '彩虹云朵 · 原创示例' },
+  { id: 'game-controller', label: '复古掌机', title: '复古掌机 · 示例', sourceName: '复古掌机 · 原创示例' },
+  { id: 'bunny', label: '草莓小兔', title: '草莓小兔 · 示例', sourceName: '草莓小兔 · 原创示例' },
+  { id: 'koi', label: '好运锦鲤', title: '好运锦鲤 · 示例', sourceName: '好运锦鲤 · 原创示例' },
+]
+
 export interface MaterialCount extends BeadColor { count: number }
 
 export function gridDimensions(width: number, height: number, longestEdge: number) {
@@ -137,6 +160,22 @@ export function cloneBeads(data: BeadsData): BeadsData {
   return { ...data, cells: [...data.cells], palette: data.palette.map(color => ({ ...color })) }
 }
 
+export function paintCell(data: BeadsData, index: number, code: string): BeadsData {
+  if (index < 0 || index >= data.cells.length) return data
+  if (data.cells[index] === code) return data
+  const cells = [...data.cells]
+  cells[index] = code
+  const used = new Set(cells.filter(Boolean))
+  const known = new Map<string, BeadColor>(BEADS_PALETTE.map(color => [color.code, color]))
+  for (const color of data.palette) known.set(color.code, color)
+  const palette = [...used]
+    .map(item => known.get(item))
+    .filter((item): item is BeadColor => Boolean(item))
+    .map(item => ({ ...item }))
+    .sort((a, b) => a.code.localeCompare(b.code))
+  return { ...data, cells, palette }
+}
+
 // Saved grids are an independent source: no original photo is needed to edit or export.
 export function resamplePattern(source: BeadsData, longestEdge: number, maxColors: number): BeadsData {
   const { columns, rows } = gridDimensions(source.columns, source.rows, longestEdge)
@@ -153,7 +192,267 @@ export function resamplePattern(source: BeadsData, longestEdge: number, maxColor
   return { ...quantizePixels(pixels, columns, rows, maxColors, source.palette.length ? source.palette : BEADS_PALETTE), beadSize: source.beadSize, sourceName: source.sourceName }
 }
 
+function spriteData(rows: readonly string[], legend: Record<string, string>, sourceName: string): BeadsData {
+  const height = rows.length
+  const width = rows[0].length
+  const cells: string[] = []
+  for (const row of rows) {
+    for (const ch of row) {
+      cells.push(legend[ch] ?? '')
+    }
+  }
+  const used = new Set(cells.filter(Boolean))
+  return {
+    columns: width,
+    rows: height,
+    cells,
+    palette: BEADS_PALETTE.filter(color => used.has(color.code)).map(color => ({ ...color })),
+    beadSize: 5,
+    sourceName,
+  }
+}
+
+const SPRITES: Record<Exclude<ExampleKind, 'flower' | 'heart'>, { rows: readonly string[]; legend: Record<string, string> }> = {
+  capybara: {
+    legend: { k: 'C27', b: 'C26', c: 'C02', o: 'C28', g: 'C22', e: 'C06', p: 'C09', n: 'C05' },
+    rows: [
+      '...........gg...........',
+      '..........oooo..........',
+      '.........oooooo.........',
+      '.........oooooo.........',
+      '..........oooo..........',
+      '.....kk..kkkkkk..kk.....',
+      '....kbbkkkkkkkkkkbbk....',
+      '....kbbbbbbbbbbbbbbk....',
+      '...kbbbbbbbbbbbbbbbbk...',
+      '...kbbebbbbbbbbbebbbk...',
+      '...kbbbbbccccccbbbbbk...',
+      '...kbbbbcccnccccbbbbk...',
+      '...kbppbcccnccccbpbpk...',
+      '...kbbbbccccccccbbbbk...',
+      '....kbbbbbbbbbbbbbbk....',
+      '....kbbbbbbbbbbbbbbk....',
+      '...kbbbbbbbbbbbbbbbbk...',
+      '...kbbbbbbbbbbbbbbbbk...',
+      '...kbbbbbbbbbbbbbbbbk...',
+      '...kbbbbbbbbbbbbbbbbk...',
+      '....kbbbbbbbbbbbbbbk....',
+      '....kbbbk..kk..kbbbk....',
+      '....kkkk........kkkk....',
+      '........................',
+    ],
+  },
+  'cat-paw': {
+    legend: { k: 'C27', w: 'C01', p: 'C14', r: 'C15', c: 'C03' },
+    rows: [
+      '........................',
+      '.......kkk....kkk.......',
+      '......kpppk..kpppk......',
+      '..kk..kprpk..kprpk..kk..',
+      '.kppk.kpppk..kpppk.kppk.',
+      '.kprpk.kkk....kkk.kprpk.',
+      '.kpppk............kpppk.',
+      '..kkk..kkkkkkkkkk..kkk..',
+      '.....kkwwwwwwwwwwkk.....',
+      '....kwwwwwwwwwwwwwwk....',
+      '...kwwwwwwwwwwwwwwwwk...',
+      '...kwwwwwwppppwwwwwwk...',
+      '..kwwwwwwpprrppwwwwwwk..',
+      '..kwwwwwpprrrrppwwwwwk..',
+      '..kwwwwwppppppppwwwwwk..',
+      '..kwwwwwppppppppwwwwwk..',
+      '...kwwwwwppppppwwwwwk...',
+      '...kwwwwwwwwwwwwwwwwk...',
+      '....kwwwwwwwwwwwwwwk....',
+      '.....kkwwwwwwwwwwkk.....',
+      '.......kkkkkkkkkk.......',
+      '........................',
+      '........................',
+      '........................',
+    ],
+  },
+  shiba: {
+    legend: { k: 'C27', o: 'C28', h: 'C08', w: 'C01', c: 'C03', e: 'C06', p: 'C10', r: 'C12' },
+    rows: [
+      '........................',
+      '....kk............kk....',
+      '...kokk..........kkok...',
+      '...koook........koook...',
+      '...koooookkkkkkkooook...',
+      '..kkoooooooooooooooook..',
+      '..koooooooooooooooooook.',
+      '.koooooowooooooowoooook.',
+      '.koooowwwoooooowwwoooook',
+      '.kooooeooooooooooeoooook',
+      '.koooowwwwkkkkwwwwoooook',
+      '.kppowwwwkkkkkkwwwwopppk',
+      '.kppowwwwwwwwwwwwwwopppk',
+      '..kkwwwwwwwwwwwwwwwwkkk.',
+      '...kwwwwwwppppwwwwwwk...',
+      '....kkwwwwppppwwwwkk....',
+      '.....krrrrrrrrrrrrk.....',
+      '.....krrrhhrrhhrrrk.....',
+      '......kwwwwwwwwwwk......',
+      '......kwwwwwwwwwwk......',
+      '......kwwk....kwwk......',
+      '......kkk......kkk......',
+      '........................',
+      '........................',
+    ],
+  },
+  boba: {
+    legend: { k: 'C27', g: 'C21', s: 'C22', w: 'C01', t: 'C02', m: 'C03', b: 'C06', p: 'C14', c: 'C26' },
+    rows: [
+      '.............ggg........',
+      '............gsg.........',
+      '............gsg.........',
+      '...........gsg..........',
+      '......kkkkkkkkkkkk......',
+      '.....kwwwwwwwwwwwwk.....',
+      '....kkkkkkkkkkkkkkkk....',
+      '.....kmmmmmmmmmmmmk.....',
+      '.....kmmmmmmmmmmmmk.....',
+      '.....kmmbmmmmmmbmmk.....',
+      '.....kmpbmmmmmmbpmk.....',
+      '.....kttmmmmmmmmttk.....',
+      '.....kttttttttttttk.....',
+      '......kttttttttttk......',
+      '......kttbbttbbttk......',
+      '......kttbbttbbttk......',
+      '......kcccccccccck......',
+      '......kcbccbbcccbk......',
+      '.......kccbbccbbk.......',
+      '.......kcccccccck.......',
+      '........kkkkkkkk........',
+      '........................',
+      '........................',
+      '........................',
+    ],
+  },
+  'rainbow-cloud': {
+    legend: { k: 'C05', w: 'C01', r: 'C12', o: 'C28', y: 'C07', g: 'C24', b: 'C18', p: 'C14', e: 'C06' },
+    rows: [
+      '........................',
+      '........rrrrrrrr........',
+      '......rrrrrrrrrrrr......',
+      '.....rrroooooooorrr.....',
+      '....rroooooooooooorr....',
+      '...rrooyyyyyyyyyyoorr...',
+      '..rrooyyygggggggyyyoor..',
+      '..rroyyggbbbbbbbggyyor..',
+      '..rroyygbbkkkkkbbgyyor..',
+      '..rrkkkkwwwwwwwwkkkkrr..',
+      '...kwwwwwwwwwwwwwwwwk...',
+      '..kwwwwwwwwwwwwwwwwwwk..',
+      '.kwwwwwewwwwwwwwewwwwwk.',
+      '.kwwwwwwwwwwwwwwwwwwwwk.',
+      '.kwwwppwwwwwwwwwwppwwwk.',
+      '.kwwwwwwwweeeewwwwwwwwk.',
+      '..kwwwwwwwwwwwwwwwwwwk..',
+      '...kkkkkkkkkkkkkkkkkk...',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+    ],
+  },
+  'game-controller': {
+    legend: { k: 'C06', g: 'C04', w: 'C01', d: 'C05', s: 'C18', b: 'C20', r: 'C12', y: 'C07' },
+    rows: [
+      '........................',
+      '....kkkkkkkkkkkkkkkk....',
+      '...kggggggggggggggggk...',
+      '...kgddddddddddddddgk...',
+      '...kgdssssssssssssdgk...',
+      '...kgdswwwwsssssssdgk...',
+      '...kgdswssssssssssdgk...',
+      '...kgdssssssssssssdgk...',
+      '...kgddddddddddddddgk...',
+      '...kggggggggggggggggk...',
+      '...kggggggggggggggggk...',
+      '...kgggkkgggggggggggk...',
+      '...kggkddkgggggggbbgk...',
+      '...kggddddkgggggrrggk...',
+      '...kgggkkgggggyykrrgk...',
+      '...kggggggggggggyyggk...',
+      '...kgggggddggddgggggk...',
+      '...kggggggggggggggggk...',
+      '....kkkkkkkkkkkkkkkk....',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+    ],
+  },
+  bunny: {
+    legend: { k: 'C13', w: 'C01', p: 'C14', r: 'C12', g: 'C21', e: 'C06', c: 'C10' },
+    rows: [
+      '........................',
+      '......kkk......kkk......',
+      '.....kwwk......kwwk.....',
+      '.....kwpk......kpwk.....',
+      '.....kwpk......kpwk.....',
+      '.....kwpk......kpwk.....',
+      '.....kwwkkkkkkkkwwk.....',
+      '....kwwwwwwwwwwwwwwk....',
+      '...kwwwwwwwwwwwwwwwwk...',
+      '...kwwwewwwwwwwwewwwk...',
+      '...kwwppwwweeeewwppwk...',
+      '....kwwwwwwwwwwwwwwk....',
+      '.....kkkwwwwwwwwkkk.....',
+      '....kwwwwkggggkwwwwk....',
+      '...kwwwwkrrrrrrkwwwwk...',
+      '...kwwkrrrrrrrrrrkwwk...',
+      '....kkrrrwrwrwrrrrkk....',
+      '.....krrrrrrrrrrrrk.....',
+      '......krrrwrwrrrrk......',
+      '.......krrrrrrrrk.......',
+      '........krrrrrrk........',
+      '.........kkkkkk.........',
+      '........................',
+      '........................',
+    ],
+  },
+  koi: {
+    legend: { k: 'C27', r: 'C12', w: 'C01', o: 'C28', b: 'C18', e: 'C06' },
+    rows: [
+      '........................',
+      '.........kkkkk..........',
+      '.......kkrrrrrkk........',
+      '......krrrrrrrrrk.......',
+      '.....krrewrrrrwerk......',
+      '....krrrrrrrrrrrrrk.....',
+      '....krrrrwwwwrrrrrk.....',
+      '...krrrrwwwwwwrrrrk.....',
+      '..koorrrwwwwwwrrrook....',
+      '...kkrrrwwwwwwrrrkk.....',
+      '....kwwwwwwwwwwwwk......',
+      '....kwwwwrrrrwwwwk......',
+      '.....kwwrrrrrrwwk.......',
+      '.....kwwrrrrrrwwk.......',
+      '......kwwwwwwwwk........',
+      '.......kwwrrwwk.........',
+      '.......koorrook.........',
+      '......koorrrrook........',
+      '.....koork..krook.......',
+      '.....kkkk....kkkk.......',
+      '........................',
+      '........................',
+      '........................',
+      '........................',
+    ],
+  },
+}
+
 export function createExample(kind: ExampleKind): BeadsData {
+  if (kind !== 'flower' && kind !== 'heart') {
+    const meta = BEAD_EXAMPLES.find(item => item.id === kind)!
+    const sprite = SPRITES[kind]
+    return spriteData(sprite.rows, sprite.legend, meta.sourceName)
+  }
   const columns = 24
   const rows = 24
   const cells: string[] = []
@@ -228,5 +527,5 @@ export function materialsCsv(data: BeadsData, name: string): string {
 }
 
 export function safeFilename(name: string) {
-  return name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/^\.+/, '').trim().slice(0, 60) || 'GiftCraft-拼豆'
+  return name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/^\.+/, '').trim().slice(0, 60) || 'TraceCraft-拼豆'
 }

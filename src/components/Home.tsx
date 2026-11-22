@@ -2,7 +2,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   CircleHelp,
-  Clock3,
   Flower2,
   Heart,
   Leaf,
@@ -11,38 +10,52 @@ import {
 } from "lucide-react";
 import { useStudio } from "../lib/studio";
 import CraftIllustration from "./CraftIllustration";
-import TraditionalWorkshops from "./TraditionalWorkshops";
 
 const workshops = [
   {
-    kind: "bracelet" as const,
-    number: "01",
-    title: "串起一份专属心意",
-    subtitle: "串饰工坊",
-    description: "挑选珠子，搭配色彩。把喜欢的样子，戴在手腕上。",
-    tag: "自由拼装",
-    time: "约 20–40 分钟",
-    color: "sage",
-  },
-  {
     kind: "beads" as const,
-    number: "02",
+    number: "01",
     title: "让回忆，有颗粒感",
-    subtitle: "照片转拼豆",
-    description: "把珍藏的照片，变成一颗颗色彩拼出的独家记忆。",
-    tag: "照片转手作",
-    time: "约 1–3 小时",
+    subtitle: "拼豆工坊",
+    description: "把珍藏的照片，变成一颗颗色彩拼出的独家记忆，支持逐格微调画笔。",
+    tag: "拼豆创作",
     color: "peach",
   },
   {
-    kind: "gift-box" as const,
-    number: "03",
-    title: "把所有美好装进礼盒",
-    subtitle: "礼盒摆盘",
-    description: "放入亲手做的作品，再系上丝带。心意，刚刚好。",
-    tag: "心意终点站",
-    time: "约 10–20 分钟",
+    kind: "embroidery" as const,
+    number: "02",
+    title: "一针一线，绣出流光",
+    subtitle: "刺绣工坊",
+    description: "上传任意图片对比长短针、十字绣与戳戳绣，自动生成配色清单与跟绣教程。",
+    tag: "丝光刺绣",
     color: "lavender",
+  },
+  {
+    kind: "wire-craft" as const,
+    number: "03",
+    title: "一钉一线，织出光影",
+    subtitle: "绕线画工坊",
+    description: "固定外圈钉或自由轮廓布钉，把人像与插画细腻织成光影线画。",
+    tag: "线艺光影",
+    color: "sage",
+  },
+  {
+    kind: "compass" as const,
+    number: "04",
+    title: "一规一弧，绘出版画",
+    subtitle: "圆规画工坊",
+    description: "上传照片转为同心圆弧、阿基米德螺线与三圆心交织网格，导出 1:1 量角底稿与跟画教程。",
+    tag: "圆规版画",
+    color: "mint",
+  },
+  {
+    kind: "carving" as const,
+    number: "05",
+    title: "一刀一影，刻出玲珑",
+    subtitle: "雕刻画工坊",
+    description: "照片转阳刻连桥刻纸、阴刻版画木刻与 4 层光影纸雕底稿，自动防掉孤岛。",
+    tag: "自动连桥",
+    color: "terracotta",
   },
 ];
 
@@ -59,7 +72,7 @@ export default function Home() {
           <h1>
             小小手作，<span>大大心意。</span>
           </h1>
-          <p>不必是手作高手，也能做出独一无二的礼物。</p>
+          <p>不必是手作高手，也能做出独一无二的作品。</p>
         </div>
         <div className="welcome-note">
           <Heart size={18} />
@@ -80,17 +93,14 @@ export default function Home() {
       </section>
       <section className="home-banner">
         <div className="banner-copy">
-          <div className="banner-label">
-            <span /> 为某个特别的人，开始创作
-          </div>
           <h2>
             那份「想到你」的心意，
             <br />
             值得亲手做出来。
           </h2>
           <p>从灵感到成品，每一步，我们陪你一起。</p>
-          <button className="btn btn-dark" onClick={() => navigate("bracelet")}>
-            开始我的第一份手作 <ArrowUpRight size={17} />
+          <button className="btn btn-dark" onClick={() => navigate("embroidery")}>
+            去刺绣工坊试试 <ArrowUpRight size={17} />
           </button>
           <div className="banner-foot">
             <span className="mini-avatars">
@@ -107,7 +117,7 @@ export default function Home() {
         <div className="banner-art">
           <div className="art-orbit orbit-one" />
           <div className="art-orbit orbit-two" />
-          <CraftIllustration kind="gift-box" />
+          <CraftIllustration kind="embroidery" />
           <div className="floating-label label-top">
             <Sparkles size={14} /> MADE BY YOU
           </div>
@@ -135,6 +145,7 @@ export default function Home() {
             <button
               className={`workshop-card ${workshop.color}`}
               key={workshop.kind}
+              aria-label={`打开${workshop.subtitle}`}
               onClick={() => navigate(workshop.kind)}
             >
               <div className="workshop-visual">
@@ -151,10 +162,6 @@ export default function Home() {
                 <p>{workshop.description}</p>
                 <div className="workshop-meta">
                   <span>
-                    <Clock3 size={13} />
-                    {workshop.time}
-                  </span>
-                  <span>
                     开始创作 <ArrowRight size={14} />
                   </span>
                 </div>
@@ -163,7 +170,6 @@ export default function Home() {
           ))}
         </div>
       </section>
-      <TraditionalWorkshops />
       <section className="journey-strip">
         <div className="journey-intro">
           <Flower2 size={29} strokeWidth={1.3} />
@@ -173,9 +179,9 @@ export default function Home() {
           </div>
         </div>
         {[
-          ["01", "设计与预览", "先看看，心意的模样"],
-          ["02", "照着步骤做", "材料清单，不再凭感觉"],
-          ["03", "装进专属礼盒", "让每一份心意都有归处"],
+          ["01", "选图与选算法", "所见即所得的材料预览"],
+          ["02", "照着步骤动手", "每步序号与色号清清楚楚"],
+          ["03", "导出留存心意", "打印 1:1 模板与高清图纸"],
         ].map(([n, title, desc]) => (
           <div className="journey-step" key={n}>
             <span>{n}</span>
@@ -222,7 +228,7 @@ export default function Home() {
         ) : (
           <button
             className="collection-empty"
-            onClick={() => navigate("bracelet")}
+            onClick={() => navigate("beads")}
           >
             <span className="empty-plus">
               <Plus size={22} />
@@ -238,7 +244,7 @@ export default function Home() {
         )}
       </section>
       <footer className="home-footer">
-        <span>GiftCraft · 心意工坊</span>
+        <span>TraceCraft · 造物工坊</span>
         <span>让礼物多一点你，让生活多一点暖。</span>
         <span>
           <CircleHelp size={13} /> 效果预览仅供参考，请以实际材料为准

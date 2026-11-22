@@ -4,20 +4,10 @@ export default function CraftIllustration({
   kind,
   className = "",
 }: {
-  kind: "bracelet" | "beads" | "gift-box";
+  kind: "beads" | "wire-craft" | "embroidery" | "compass" | "carving";
   className?: string;
 }) {
   const id = useId().replace(/:/g, "");
-  const colors = [
-    "#e9e3d1",
-    "#cbd6b7",
-    "#9fae89",
-    "#dbbd7f",
-    "#e8dbb7",
-    "#eae5d6",
-    "#a0b5a0",
-    "#cf8a57",
-  ];
   const flower = [
     "000001110000000",
     "000011111000000",
@@ -47,11 +37,15 @@ export default function CraftIllustration({
       fill="none"
       role="img"
       aria-label={
-        kind === "bracelet"
-          ? "天然石与珍珠串成的手链"
+        kind === "wire-craft"
+          ? "外圈钉阵绕线画圆盘"
           : kind === "beads"
             ? "雏菊拼豆作品"
-            : "装有手作作品的礼盒"
+            : kind === "compass"
+              ? "圆规量角底稿与同心圆弧画作"
+              : kind === "carving"
+                ? "阳刻连桥刻纸底稿与笔刀"
+                : "榉木绣绷与山茶刺绣"
       }
     >
       <defs>
@@ -98,88 +92,62 @@ export default function CraftIllustration({
           <circle cx="2" cy="3" r=".7" fill="#b7bb9a" opacity=".25" />
         </pattern>
       </defs>
-      {kind === "bracelet" && (
+      {kind === "wire-craft" && (
         <>
-          <ellipse
-            cx="217"
-            cy="244"
-            rx="107"
-            ry="13"
-            fill="#5d5b40"
-            opacity=".07"
-          />
-          <path
-            d="M51 71c22 32 35 23 45 55M45 57c25 8 35 18 44 37"
-            stroke="#a6b293"
-            strokeWidth="2"
-            opacity=".5"
-          />
-          <path
-            d="M59 89C15 78 38 50 59 89M79 113C103 69 126 102 79 113M69 92C76 62 99 74 69 92"
-            fill="#b4bca2"
-            opacity=".6"
-          />
-          <g transform="rotate(-18 220 151)">
-            <ellipse
-              cx="220"
-              cy="144"
-              rx="96"
-              ry="91"
-              stroke="#d4be8b"
-              strokeWidth="3"
-            />
-            {Array.from({ length: 24 }, (_, i) => {
-              const a = (i * Math.PI) / 12;
-              const x = 220 + Math.cos(a) * 96;
-              const y = 144 + Math.sin(a) * 91;
-              const spacer = i === 3 || i === 10 || i === 16;
+          <ellipse cx="220" cy="248" rx="108" ry="12" fill="#5d5b40" opacity=".08" />
+          <g filter={`url(#${id}-shadow)`}>
+            <circle cx="220" cy="146" r="102" fill="#fbf7ef" stroke="#d5cab5" strokeWidth="7" />
+            <circle cx="220" cy="146" r="93" fill="none" stroke="#e4dccb" strokeWidth="1.2" strokeDasharray="4 4" />
+            {Array.from({ length: 40 }, (_, i) => {
+              const a1 = -Math.PI / 2 + (i * Math.PI * 2) / 40
+              const a2 = -Math.PI / 2 + (((i * 7 + 9) % 40) * Math.PI * 2) / 40
               return (
-                <g key={i} filter={`url(#${id}-small)`}>
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={spacer ? 7 : 12.5}
-                    fill={
-                      spacer ? `url(#${id}-gold)` : colors[i % colors.length]
-                    }
-                  />
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={spacer ? 7 : 12.5}
-                    fill={`url(#${id}-shine)`}
-                  />
-                  {!spacer && (
-                    <ellipse
-                      cx={x - 4}
-                      cy={y - 4.5}
-                      rx="3.4"
-                      ry="2.1"
-                      fill="#fff"
-                      opacity=".45"
-                    />
-                  )}
-                </g>
-              );
+                <line
+                  key={`wc-${i}`}
+                  x1={220 + Math.cos(a1) * 86}
+                  y1={146 + Math.sin(a1) * 86}
+                  x2={220 + Math.cos(a2) * 86}
+                  y2={146 + Math.sin(a2) * 86}
+                  stroke="#2c2b29"
+                  strokeOpacity={i % 3 === 0 ? "0.28" : "0.14"}
+                  strokeWidth="1.25"
+                />
+              )
             })}
-            <circle
-              cx="220"
-              cy="246"
-              r="9"
-              stroke={`url(#${id}-gold)`}
-              strokeWidth="3"
-            />
-            <path
-              d="m220 253 10 13-10 14-10-14Z"
-              fill={`url(#${id}-gold)`}
-              filter={`url(#${id}-small)`}
-            />
+            {Array.from({ length: 24 }, (_, i) => {
+              const a1 = -Math.PI / 2 + (i * Math.PI * 2) / 24
+              const a2 = -Math.PI / 2 + (((i + 5) % 24) * Math.PI * 2) / 24
+              return (
+                <line
+                  key={`wr-${i}`}
+                  x1={220 + Math.cos(a1) * 86}
+                  y1={146 + Math.sin(a1) * 86}
+                  x2={220 + Math.cos(a2) * 86}
+                  y2={146 + Math.sin(a2) * 86}
+                  stroke="#a94d3b"
+                  strokeOpacity="0.34"
+                  strokeWidth="1.2"
+                />
+              )
+            })}
+            {Array.from({ length: 40 }, (_, i) => {
+              const ang = -Math.PI / 2 + (i * Math.PI * 2) / 40
+              return (
+                <circle
+                  key={`wp-${i}`}
+                  cx={220 + Math.cos(ang) * 86}
+                  cy={146 + Math.sin(ang) * 86}
+                  r={i === 0 ? 3.2 : 2}
+                  fill={i === 0 ? "#b84534" : "#9c794e"}
+                />
+              )
+            })}
           </g>
-          <path
-            d="m351 70 3 9 9 3-9 3-3 9-3-9-9-3 9-3Z"
-            fill="#bc9e59"
-            opacity=".7"
-          />
+          <g transform="translate(334 198) rotate(-14)" filter={`url(#${id}-small)`}>
+            <rect x="0" y="0" width="34" height="30" rx="5" fill="#d9c6a8" stroke="#b99f79" strokeWidth="1.5" />
+            <rect x="5" y="5" width="24" height="20" rx="2" fill="#a94d3b" />
+            <path d="M28 18q15 8 27-2" stroke="#a94d3b" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+          </g>
         </>
       )}
       {kind === "beads" && (
@@ -254,70 +222,109 @@ export default function CraftIllustration({
           ))}
         </>
       )}
-      {kind === "gift-box" && (
+      {kind === "embroidery" && (
         <>
-          <g
-            transform="translate(55 27) rotate(-9 170 120)"
-            filter={`url(#${id}-shadow)`}
-          >
-            <path d="m17 41 290-13 13 195-287 21Z" fill="#b99773" />
-            <path d="m26 48 271-12 12 176-266 20Z" fill="#e6ceb0" />
-            <path d="m35 55 253-10 11 157-249 20Z" fill="#f3e5c9" />
-            {Array.from({ length: 39 }, (_, i) => (
-              <path
-                key={i}
-                d={`M${42 + (i % 13) * 19} ${60 + Math.floor(i / 13) * 53}q-17 19 5 22t-3 26`}
-                stroke={i % 2 ? "#ccb890" : "#e4d3ab"}
-                strokeWidth="2"
-                fill="none"
+          <ellipse cx="220" cy="252" rx="108" ry="12" fill="#5d5b40" opacity=".08" />
+          <g transform="translate(220 42)">
+            <rect x="-13" y="-8" width="26" height="14" rx="3" fill={`url(#${id}-gold)`} stroke="#8f6b32" strokeWidth="1.2" />
+            <rect x="-26" y="-4" width="52" height="4.5" rx="2" fill="#c79e54" />
+          </g>
+          <g filter={`url(#${id}-shadow)`}>
+            <circle cx="220" cy="148" r="102" fill="#c59e6b" stroke="#9e7949" strokeWidth="2.5" />
+            <circle cx="220" cy="148" r="91" fill="#f7f1e4" stroke="#9d7a4c" strokeWidth="2" />
+            <circle cx="220" cy="148" r="89" fill={`url(#${id}-paper)`} />
+          </g>
+          <g filter={`url(#${id}-small)`}>
+            <ellipse cx="176" cy="178" rx="26" ry="13" transform="rotate(-32 176 178)" fill="#4c8851" />
+            <ellipse cx="264" cy="128" rx="24" ry="12" transform="rotate(24 264 128)" fill="#679b65" />
+            <path d="M156 190L192 168M246 122L282 135" stroke="#2c5935" strokeWidth="1.6" strokeLinecap="round" />
+            {[0, 72, 144, 216, 288].map(deg => (
+              <ellipse
+                key={`pet-${deg}`}
+                cx={220 + Math.cos((deg * Math.PI) / 180) * 28}
+                cy={148 + Math.sin((deg * Math.PI) / 180) * 28}
+                rx="22"
+                ry="16"
+                transform={`rotate(${deg} ${220 + Math.cos((deg * Math.PI) / 180) * 28} ${148 + Math.sin((deg * Math.PI) / 180) * 28})`}
+                fill={deg % 144 === 0 ? "#c83848" : "#df5461"}
               />
             ))}
-            <g transform="translate(93 128)">
-              {Array.from({ length: 16 }, (_, i) => (
-                <g key={i}>
-                  <circle
-                    cx={Math.cos((i * Math.PI) / 8) * 43}
-                    cy={Math.sin((i * Math.PI) / 8) * 43}
-                    r="8.8"
-                    fill={colors[i % colors.length]}
-                  />
-                  <circle
-                    cx={Math.cos((i * Math.PI) / 8) * 43}
-                    cy={Math.sin((i * Math.PI) / 8) * 43}
-                    r="8.8"
-                    fill={`url(#${id}-shine)`}
-                  />
-                </g>
-              ))}
-            </g>
-            <g transform="translate(177 73) rotate(10)">
-              <rect width="87" height="105" rx="3" fill="#fdfbf3" />
-              <path d="M44 84V38m0 31 14-13" stroke="#829772" strokeWidth="3" />
-              {Array.from({ length: 7 }, (_, i) => (
-                <ellipse
-                  key={i}
-                  cx={44 + Math.cos((i * Math.PI * 2) / 7) * 13}
-                  cy={36 + Math.sin((i * Math.PI * 2) / 7) * 13}
-                  rx="7"
-                  ry="10"
-                  transform={`rotate(${(i * 360) / 7} ${44 + Math.cos((i * Math.PI * 2) / 7) * 13} ${36 + Math.sin((i * Math.PI * 2) / 7) * 13})`}
-                  fill="#e9b367"
+            {[36, 108, 180, 252, 324].map(deg => (
+              <path
+                key={`th-${deg}`}
+                d={`M${220 + Math.cos((deg * Math.PI) / 180) * 14} ${148 + Math.sin((deg * Math.PI) / 180) * 14}L${220 + Math.cos((deg * Math.PI) / 180) * 38} ${148 + Math.sin((deg * Math.PI) / 180) * 38}`}
+                stroke="#f2a2aa"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                opacity=".7"
+              />
+            ))}
+            <circle cx="220" cy="148" r="11" fill="#ebc45c" stroke="#c78d32" strokeWidth="1.5" />
+            <circle cx="216" cy="145" r="2.2" fill="#f9e69b" />
+            <circle cx="224" cy="147" r="2.2" fill="#f9e69b" />
+            <circle cx="219" cy="152" r="2.2" fill="#f9e69b" />
+          </g>
+          <g transform="translate(310 194) rotate(-32)">
+            <line x1="0" y1="0" x2="54" y2="0" stroke="#9aa2a8" strokeWidth="2.2" strokeLinecap="round" />
+            <path d="M52 0q18 22 -4 34t-24-8" stroke="#c83848" strokeWidth="2" fill="none" strokeLinecap="round" />
+          </g>
+        </>
+      )}
+      {kind === "compass" && (
+        <>
+          <ellipse cx="220" cy="252" rx="108" ry="12" fill="#5d5b40" opacity=".08" />
+          <g filter={`url(#${id}-shadow)`}>
+            <circle cx="220" cy="146" r="102" fill="#fcfaf4" stroke="#cfd8d1" strokeWidth="6" />
+            <circle cx="220" cy="146" r="88" fill="none" stroke="#9eb2a7" strokeWidth="1" strokeDasharray="3 3" />
+            {Array.from({ length: 12 }, (_, idx) => {
+              const r = 14 + idx * 6.3
+              const sw = idx % 3 === 1 ? "2.6" : idx % 2 === 0 ? "1.6" : "0.9"
+              const angOffset = idx * 19
+              return (
+                <circle
+                  key={`cr-${idx}`}
+                  cx="220"
+                  cy="146"
+                  r={r}
+                  fill="none"
+                  stroke={idx % 4 === 0 ? "#24435c" : "#3a6585"}
+                  strokeWidth={sw}
+                  strokeDasharray={`${Math.round(r * 2.2)} ${Math.round(r * 1.1)}`}
+                  strokeDashoffset={angOffset}
+                  opacity={0.45 + (idx % 3) * 0.2}
                 />
-              ))}
-              <circle cx="44" cy="36" r="7" fill="#a27645" />
-            </g>
-            <path d="M143 33v203" stroke="#95a18c" strokeWidth="17" />
-            <path d="M147 34v201" stroke="#c1cbb5" strokeWidth="2" />
-            <path
-              d="M144 73c-78-6-48-62-16-24l16 24c7-61 61-49 33-20-13 13-33 20-33 20Z"
-              fill="#9ca994"
-              stroke="#768970"
-              strokeWidth="2"
-            />
-            <path
-              d="m142 76-22 47 13-3 5 10 8-53 20 36 6-13 11 3-30-33"
-              fill="#93a28a"
-            />
+              )
+            })}
+            <path d="M214 146H226M220 140V152" stroke="#b54c3b" strokeWidth="1.4" />
+            <circle cx="220" cy="146" r="2.2" fill="#b54c3b" />
+          </g>
+          <g transform="translate(318 82) rotate(24)" filter={`url(#${id}-small)`}>
+            <circle cx="0" cy="0" r="6" fill={`url(#${id}-gold)`} stroke="#8f6b32" strokeWidth="1.2" />
+            <line x1="0" y1="0" x2="0" y2="-11" stroke="#8f6b32" strokeWidth="3" strokeLinecap="round" />
+            <path d="M-2 5L-22 86" stroke="#7c878e" strokeWidth="2.8" strokeLinecap="round" />
+            <path d="M2 5L22 84" stroke="#7c878e" strokeWidth="2.8" strokeLinecap="round" />
+            <line x1="-22" y1="86" x2="-24" y2="95" stroke="#535d63" strokeWidth="1.5" strokeLinecap="round" />
+            <rect x="19" y="72" width="6" height="15" rx="2" fill="#24435c" />
+            <line x1="22" y1="87" x2="23" y2="94" stroke="#24435c" strokeWidth="1.8" strokeLinecap="round" />
+          </g>
+        </>
+      )}
+      {kind === "carving" && (
+        <>
+          <ellipse cx="220" cy="254" rx="116" ry="12" fill="#5d5b40" opacity=".08" />
+          <g filter={`url(#${id}-shadow)`}>
+            <rect x="122" y="48" width="196" height="196" rx="8" fill="#faf5eb" stroke="#dfd5c2" strokeWidth="2.5" />
+            <rect x="136" y="62" width="168" height="168" rx="4" fill="#b63b2f" />
+            <circle cx="220" cy="146" r="64" fill="#faf5eb" />
+            <path d="M220 90C244 108 258 134 252 162C246 184 220 198 220 198C220 198 194 184 188 162C182 134 196 108 220 90Z" fill="#b63b2f" />
+            <path d="M192 146H248M220 112V186" stroke="#faf5eb" strokeWidth="4" strokeLinecap="round" />
+            <circle cx="220" cy="146" r="16" fill="#faf5eb" />
+            <circle cx="220" cy="146" r="9" fill="#b63b2f" />
+            <path d="M220 146V166M156 146H172M268 146H284" stroke="#b63b2f" strokeWidth="4.5" strokeLinecap="round" />
+          </g>
+          <g transform="translate(324 198) rotate(-36)" filter={`url(#${id}-small)`}>
+            <rect x="0" y="-4" width="66" height="8" rx="3" fill="#c79e54" stroke="#8f6b32" strokeWidth="1.2" />
+            <path d="M0 -3L-16 0L0 3Z" fill="#d8dee3" stroke="#7d868e" strokeWidth="1" />
           </g>
         </>
       )}

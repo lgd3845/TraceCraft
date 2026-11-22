@@ -3,11 +3,22 @@ import { useState } from "react";
 import { useStudio } from "../lib/studio";
 import type { Artwork } from "../lib/types";
 
-const labels = {
-  bracelet: "串饰作品",
+const labels: Record<Artwork["kind"], string> = {
   beads: "拼豆作品",
-  "gift-box": "心意礼盒",
+  embroidery: "刺绣作品",
+  "wire-craft": "绕线画作品",
+  compass: "圆规画作品",
+  carving: "雕刻画作品",
 };
+
+const filterTabs: Array<{ kind: "all" | Artwork["kind"]; label: string }> = [
+  { kind: "all", label: "全部作品" },
+  { kind: "beads", label: "拼豆作品" },
+  { kind: "embroidery", label: "刺绣作品" },
+  { kind: "wire-craft", label: "绕线画作品" },
+  { kind: "compass", label: "圆规画作品" },
+  { kind: "carving", label: "雕刻画作品" },
+];
 
 export default function Library() {
   const { artworks, navigate, deleteArtwork } = useStudio();
@@ -28,20 +39,20 @@ export default function Library() {
         </div>
         <button
           className="btn btn-primary"
-          onClick={() => navigate("bracelet")}
+          onClick={() => navigate("beads")}
         >
           <Plus size={16} /> 新建作品
         </button>
       </div>
       <div className="library-toolbar">
         <div className="segmented">
-          {(["all", "bracelet", "beads", "gift-box"] as const).map((kind) => (
+          {filterTabs.map((tab) => (
             <button
-              key={kind}
-              className={filter === kind ? "active" : ""}
-              onClick={() => setFilter(kind)}
+              key={tab.kind}
+              className={filter === tab.kind ? "active" : ""}
+              onClick={() => setFilter(tab.kind)}
             >
-              {kind === "all" ? "全部作品" : labels[kind]}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -56,7 +67,7 @@ export default function Library() {
           <p>去工坊设计并保存，作品就会出现在这里。</p>
           <button
             className="btn btn-primary"
-            onClick={() => navigate(filter === "all" ? "bracelet" : filter)}
+            onClick={() => navigate(filter === "all" ? "beads" : filter)}
           >
             开始创作 <ArrowRight size={16} />
           </button>
@@ -100,15 +111,9 @@ export default function Library() {
                   <div className="library-actions">
                     <button
                       className="text-button"
-                      onClick={() =>
-                        navigate(
-                          work.kind === "gift-box" ? work.kind : "gift-box",
-                          work.id,
-                        )
-                      }
+                      onClick={() => navigate(work.kind, work.id)}
                     >
-                      {work.kind === "gift-box" ? "打开礼盒" : "放入礼盒"}{" "}
-                      <ArrowRight size={14} />
+                      继续编辑 <ArrowRight size={14} />
                     </button>
                     <button
                       className="icon-button"

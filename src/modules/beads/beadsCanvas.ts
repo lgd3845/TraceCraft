@@ -2,6 +2,10 @@ import type { BeadsData } from '../../lib/types'
 import { countMaterials, detectImageType, gridDimensions, hexToRgb, PALETTE_NOTICE, physicalSize, quantizePixels, validateImageFile } from './beads'
 
 export type PreviewMode = 'beads' | 'pixels'
+export const PREVIEW_CELL = 28
+export function previewPadding(mode: PreviewMode) {
+  return mode === 'pixels' ? 32 : 16
+}
 
 function canvasWithContext(width: number, height: number) {
   const canvas = document.createElement('canvas')
@@ -64,22 +68,27 @@ function drawBead(context: CanvasRenderingContext2D, x: number, y: number, cell:
   const radius = cell * 0.445
   const hole = cell * 0.18
   const gradient = context.createLinearGradient(x - radius, y - radius, x + radius, y + radius)
-  gradient.addColorStop(0, tint(color, 0.35))
-  gradient.addColorStop(0.35, color)
-  gradient.addColorStop(1, tint(color, -0.18))
+  gradient.addColorStop(0, tint(color, 0.42))
+  gradient.addColorStop(0.32, color)
+  gradient.addColorStop(0.75, tint(color, -0.08))
+  gradient.addColorStop(1, tint(color, -0.26))
   context.fillStyle = gradient
   context.beginPath()
   context.arc(x, y, radius, 0, Math.PI * 2)
   context.arc(x, y, hole, 0, Math.PI * 2, true)
   context.fill('evenodd')
-  context.lineWidth = Math.max(0.6, cell * 0.028)
-  context.strokeStyle = tint(color, -0.23)
+  context.lineWidth = Math.max(0.6, cell * 0.032)
+  context.strokeStyle = tint(color, -0.3)
   context.beginPath()
-  context.arc(x, y, hole + 0.2, Math.PI * 1.05, Math.PI * 1.95)
+  context.arc(x, y, radius - cell * 0.015, Math.PI * 0.15, Math.PI * 0.92)
   context.stroke()
-  context.strokeStyle = tint(color, 0.6)
   context.beginPath()
-  context.arc(x, y, radius - cell * 0.07, Math.PI * 1.07, Math.PI * 1.75)
+  context.arc(x, y, hole + 0.3, Math.PI * 1.05, Math.PI * 1.95)
+  context.stroke()
+  context.strokeStyle = tint(color, 0.68)
+  context.lineWidth = Math.max(0.7, cell * 0.045)
+  context.beginPath()
+  context.arc(x, y, radius - cell * 0.08, Math.PI * 1.08, Math.PI * 1.72)
   context.stroke()
 }
 
@@ -119,8 +128,8 @@ function drawPixels(context: CanvasRenderingContext2D, data: BeadsData, cell: nu
 }
 
 export function renderPreview(canvas: HTMLCanvasElement, data: BeadsData, mode: PreviewMode, showCodes: boolean) {
-  const cell = 28
-  const padding = mode === 'pixels' ? 32 : 16
+  const cell = PREVIEW_CELL
+  const padding = previewPadding(mode)
   canvas.width = data.columns * cell + padding * 2
   canvas.height = data.rows * cell + padding * 2
   const context = canvas.getContext('2d')
@@ -164,57 +173,104 @@ export function thumbnailPng(data: BeadsData): string {
 
 export function patternCanvas(data: BeadsData, name: string): HTMLCanvasElement {
   const cell = 30
-  const margin = 48
-  const gridTop = 162
-  const width = Math.max(760, data.columns * cell + margin * 2)
+  const margin = 52
+  const gridInnerPad = 36
+  const gridWidth = data.columns * cell
+  const gridHeight = data.rows * cell
+  const gridCardW = Math.max(856, gridWidth + gridInnerPad * 2)
+  const gridCardH = gridHeight + gridInnerPad * 2 + 12
+  const width = Math.max(960, gridCardW + margin * 2)
+  const gridCardY = 166
+  const drawTop = gridCardY + gridInnerPad + 8
+  const drawLeft = (width - gridWidth) / 2
   const materials = countMaterials(data)
-  const legendTop = gridTop + data.rows * cell + 60
-  const footerTop = legendTop + Math.ceil(materials.length / 3) * 38 + 32
-  const { canvas, context } = canvasWithContext(width, footerTop + 120)
+  const legendCardY = gridCardY + gridCardH + 22
+  const legendStartY = legendCardY + 62
+  const legendRows = Math.max(1, Math.ceil(materials.length / 3))
+  const legendCardH = 74 + legendRows * 38 + 16
+  const footerY = legendCardY + legendCardH + 34
+  const height = footerY + 56
+  const { canvas, context } = canvasWithContext(width, height)
   const size = physicalSize(data.columns, data.rows, data.beadSize)
   const total = materials.reduce((sum, material) => sum + material.count, 0)
-  context.fillStyle = '#ffffff'
+
+  context.fillStyle = '#faf8f2'
   context.fillRect(0, 0, canvas.width, canvas.height)
+  context.strokeStyle = '#e4e5d9'
+  context.lineWidth = 2
+  context.strokeRect(20, 20, canvas.width - 40, canvas.height - 40)
+
   context.textAlign = 'left'
   context.fillStyle = '#b86b4b'
+  context.font = '600 13px sans-serif'
+  context.fillText('TRACECRAFT · PERLER BEADS · 拼豆工坊图纸', margin, 56, width - margin * 2)
+  context.fillStyle = '#333a2d'
+  context.font = '700 30px sans-serif'
+  context.fillText(name.trim() || '我的拼豆作品', margin, 96, width - margin * 2)
+  context.fillStyle = '#5e6653'
+  context.font = '15px sans-serif'
+  context.fillText(
+    `${data.columns} × ${data.rows} 格   ·   ${data.beadSize} mm 拼豆   ·   约 ${size.widthMm} × ${size.heightMm} mm   ·   ${total} 颗 / ${materials.length} 色`,
+    margin,
+    126,
+    width - margin * 2,
+  )
+  context.fillStyle = '#7b846f'
   context.font = '12px sans-serif'
-  context.fillText('GIFTCRAFT / 拼豆制作图纸', margin, 30)
-  context.fillStyle = '#35392f'
-  context.font = '600 26px sans-serif'
-  context.fillText(name.trim() || '我的拼豆作品', margin, 68, width - margin * 2)
-  context.font = '14px sans-serif'
-  context.fillText(`${data.columns} 列 × ${data.rows} 行   ·   ${data.beadSize} mm 拼豆   ·   约 ${size.widthMm} × ${size.heightMm} mm   ·   ${total} 颗 / ${materials.length} 色`, margin, 100, width - margin * 2)
-  context.fillStyle = '#758068'
-  context.font = '12px sans-serif'
-  context.fillText(`来源：${data.sourceName}   |   正面图纸 · 左上角起数 · 空白格不放豆`, margin, 124, width - margin * 2)
-  drawPixels(context, data, cell, (width - data.columns * cell) / 2, gridTop, true)
+  context.fillText(`来源：${data.sourceName}   ·   正面左起计数 · 空白格不放豆`, margin, 148, width - margin * 2)
+
+  context.fillStyle = '#ffffff'
+  context.beginPath()
+  context.roundRect((width - gridCardW) / 2, gridCardY, gridCardW, gridCardH, 16)
+  context.fill()
+  context.strokeStyle = '#e5e6dc'
+  context.lineWidth = 1.5
+  context.stroke()
+
+  drawPixels(context, data, cell, drawLeft, drawTop, true)
+
   context.textAlign = 'left'
   context.textBaseline = 'alphabetic'
-  context.fillStyle = '#35392f'
-  context.font = '600 17px sans-serif'
-  context.fillText('材料色卡 / 数量不含备用损耗', margin, legendTop - 18)
-  const legendWidth = (width - margin * 2) / 3
+  const legendCardX = margin
+  const legendCardW = width - margin * 2
+  context.fillStyle = '#ffffff'
+  context.beginPath()
+  context.roundRect(legendCardX, legendCardY, legendCardW, legendCardH, 16)
+  context.fill()
+  context.strokeStyle = '#e5e6dc'
+  context.lineWidth = 1.5
+  context.stroke()
+
+  context.fillStyle = '#353c2f'
+  context.font = '700 17px sans-serif'
+  context.fillText(`材料色卡（共 ${materials.length} 色）`, legendCardX + 24, legendCardY + 36)
+
+  const legendWidth = (legendCardW - 48) / 3
   for (let index = 0; index < materials.length; index++) {
     const material = materials[index]
-    const x = margin + (index % 3) * legendWidth
-    const y = legendTop + Math.floor(index / 3) * 38
+    const x = legendCardX + 24 + (index % 3) * legendWidth
+    const y = legendStartY + Math.floor(index / 3) * 38
     context.fillStyle = material.color
-    context.fillRect(x, y, 22, 22)
+    context.beginPath()
+    context.roundRect(x, y, 22, 22, 5)
+    context.fill()
     context.strokeStyle = '#d6dacf'
     context.lineWidth = 1
-    context.strokeRect(x, y, 22, 22)
+    context.stroke()
     context.fillStyle = '#444b3d'
     context.font = '13px sans-serif'
     context.fillText(`${material.code} ${material.name} · ${material.count} 颗`, x + 31, y + 16, legendWidth - 42)
   }
+
   context.fillStyle = '#a15d43'
-  context.font = '13px sans-serif'
-  context.fillText(PALETTE_NOTICE, margin, footerTop, width - margin * 2)
-  context.fillStyle = '#758068'
   context.font = '12px sans-serif'
-  context.fillText('按网格外框估算尺寸；熨烫后尺寸可能变化。屏幕预览与实物可能存在色差。', margin, footerTop + 26, width - margin * 2)
-  context.fillText('请用配套隔热纸，由成人按材料说明熨烫，保持通风，冷却后再取下。小颗粒远离幼儿。', margin, footerTop + 51, width - margin * 2)
-  context.fillText('照片仅在本机处理，不上传。建议按色分豆、逐行核对，先检查孤立色块能否连接。', margin, footerTop + 76, width - margin * 2)
+  context.fillText(PALETTE_NOTICE, margin, footerY, width - margin * 2 - 230)
+  context.textAlign = 'right'
+  context.fillStyle = '#77806b'
+  context.fillText('由 TraceCraft 拼豆工坊在本地生成', width - margin, footerY)
+  context.textAlign = 'left'
+  context.fillStyle = '#758068'
+  context.fillText('请用配套隔热纸由成人按说明熨烫，冷却后再取下；小颗粒远离幼儿。', margin, footerY + 24, width - margin * 2)
   return canvas
 }
 

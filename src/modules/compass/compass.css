@@ -1,0 +1,1102 @@
+.compass-studio {
+  --cmp-line: #e9e7dd;
+  --cmp-muted: #939a87;
+  --cmp-ink: #68725f;
+  --cmp-warm: #a2836b;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.compass-heading {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.compass-heading .eyebrow {
+  color: #a2836b;
+  letter-spacing: 1.5px;
+}
+
+.compass-heading h1 {
+  font-size: 24px;
+  letter-spacing: 1.2px;
+  margin: 3px 0 0;
+}
+
+.compass-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.compass-actions .btn {
+  font-size: 11px;
+  padding: 10px 14px;
+}
+
+.compass-journey {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--cmp-line);
+  padding: 8px 0 10px;
+  color: #a3a997;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.compass-journey > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.compass-journey i {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 13px;
+  color: #b4876a;
+}
+
+.compass-layout {
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr) 232px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.compass-controls,
+.compass-sequence-panel {
+  padding: 14px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.compass-controls {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #ced2c2 transparent;
+}
+
+.compass-controls .panel-title,
+.compass-sequence-panel .panel-title {
+  font-size: 12px;
+  gap: 7px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.compass-controls .panel-title > svg {
+  color: #9b9f8c;
+}
+
+.compass-sequence-panel .panel-title > svg {
+  color: #b29375;
+}
+
+.compass-file-input {
+  display: none;
+}
+
+.compass-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 98px;
+  padding: 10px 8px;
+  border: 1px dashed #d5c5b2;
+  border-radius: 10px;
+  background: #fcf9f4;
+  text-align: center;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.compass-dropzone:hover,
+.compass-dropzone.compass-dragging {
+  background: #f8eee3;
+  border-color: #bf8862;
+}
+
+.compass-upload-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f2e7d9;
+  color: #b58a65;
+  margin-bottom: 2px;
+}
+
+.compass-source-image {
+  width: 58px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid #e1d7c4;
+}
+
+.compass-dropzone strong {
+  font-size: 10px;
+  font-weight: 550;
+  color: #7c725f;
+  line-height: 1.5;
+}
+
+.compass-dropzone > span:not(.compass-upload-icon) {
+  color: #aaa08e;
+  font-size: 8px;
+}
+
+.compass-photo-framing {
+  margin: 10px 0 8px;
+  padding: 10px;
+  border-radius: 9px;
+  background: #fcf9f4;
+  border: 1px solid #eae2d5;
+  text-align: center;
+}
+
+.compass-photo-framing canvas {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: block;
+  margin: 0 auto 6px;
+  border: 1px solid var(--cmp-line);
+}
+
+.compass-photo-framing > p {
+  font-size: 9px;
+  color: #849276;
+  margin: 0 0 6px;
+}
+
+.compass-photo-framing details summary {
+  cursor: pointer;
+  font-size: 10px;
+  color: #9e6b4a;
+  font-weight: 600;
+}
+
+.compass-framing-controls {
+  display: grid;
+  gap: 5px;
+  margin-top: 6px;
+  text-align: left;
+}
+
+.compass-framing-controls label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: #6b7460;
+}
+
+.compass-framing-controls input[type='range'] {
+  width: 100%;
+  accent-color: #6b7d56;
+}
+
+.compass-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid #dfe2d4;
+  background: #fff;
+  color: #89907c;
+  font-size: 9px;
+  margin-top: 2px;
+}
+
+.compass-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #fbefe8;
+  border: 1px solid #f1d6c7;
+  color: #a65f49;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.compass-error svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.compass-example-label {
+  font-size: 9px;
+  color: #9fa393;
+  margin: 10px 0 6px;
+}
+
+.compass-examples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.compass-examples button {
+  padding: 5px 4px;
+  border-radius: 7px;
+  border: 1px solid #e9e9e0;
+  background: #fff;
+  color: #828977;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.compass-examples button:hover {
+  background: #f4f5ee;
+}
+
+.compass-examples button.is-active {
+  border-color: #e2c7ae;
+  background: #fbf0e5;
+  color: #af7d56;
+  font-weight: 550;
+}
+
+.compass-divider {
+  height: 1px;
+  background: var(--cmp-line);
+  margin: 12px 0;
+  flex-shrink: 0;
+}
+
+.compass-param-field {
+  margin-bottom: 10px;
+}
+
+.compass-param-field .field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 10px;
+  color: #737b68;
+}
+
+.compass-param-field .field-label small {
+  color: #a1a694;
+  font-weight: 400;
+  font-size: 8px;
+}
+
+.compass-param-field input[type='text'] {
+  width: 100%;
+  font-size: 10px !important;
+  padding: 7px 10px !important;
+}
+
+.compass-algo-modes {
+  display: grid;
+  gap: 5px;
+}
+
+.compass-algo-modes button {
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: 1px solid #ebeee4;
+  background: #f6f7f2;
+  text-align: left;
+  font-size: 9.5px;
+  color: #6a735e;
+  white-space: nowrap;
+}
+
+.compass-algo-modes button:hover {
+  background: #edf1e5;
+}
+
+.compass-algo-modes button.is-active {
+  background: #eaf0e1;
+  border-color: #bccbad;
+  color: #536640;
+  font-weight: 600;
+}
+
+.compass-option-row {
+  display: flex;
+  gap: 5px;
+}
+
+.compass-option-row button {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 2px;
+  border-radius: 6px;
+  border: 1px solid #ebeee4;
+  background: #f6f7f2;
+  color: #8b937e;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.compass-option-row button:hover {
+  background: #edf1e5;
+}
+
+.compass-option-row button.is-active {
+  background: #eaf0e1;
+  border-color: #bccbad;
+  color: #5c6f47;
+  font-weight: 600;
+}
+
+.compass-palettes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.compass-palettes button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid #ebeee4;
+  background: #fff;
+  font-size: 9px;
+  color: #6c7361;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.compass-palettes button > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compass-palettes button.is-active {
+  background: #eaf0e1;
+  border-color: #bccbad;
+  color: #4b5a3d;
+  font-weight: 600;
+}
+
+.compass-palette-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border-radius: 99px;
+  border: 1px solid #d5d6cb;
+  flex-shrink: 0;
+}
+
+.compass-palette-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.compass-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: #f7f7f2;
+  border: 1px solid #eaebe2;
+  cursor: pointer;
+}
+
+.compass-toggle input {
+  margin-top: 2px;
+  accent-color: #849669;
+}
+
+.compass-toggle span {
+  display: flex;
+  flex-direction: column;
+  font-size: 9.5px;
+  color: #646d59;
+  font-weight: 600;
+}
+
+.compass-toggle small {
+  font-size: 8px;
+  color: #9ba18e;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.compass-workspace,
+.compass-right-column {
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.compass-canvas-panel {
+  border: 1px solid var(--cmp-line);
+  border-radius: 14px;
+  background: #f5f3ec;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.compass-canvas-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e7e7dd;
+  background: #fbfbf7;
+  flex-shrink: 0;
+}
+
+.compass-canvas-header .segmented {
+  background: #eeeee5;
+  gap: 3px;
+}
+
+.compass-canvas-header .segmented button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  padding: 7px 10px;
+}
+
+.compass-header-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 9px;
+  color: #778069;
+}
+
+.compass-header-toggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.compass-header-toggles input {
+  accent-color: #87976c;
+  margin: 0;
+}
+
+.compass-layer-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 8px;
+  margin-bottom: 8px;
+  border: 1px solid #eceee4;
+  border-radius: 8px;
+  background: #fcfbf6;
+  flex-shrink: 0;
+}
+
+.compass-layer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: #7d8571;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.compass-layer-pills {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  max-height: 116px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #d4dbca transparent;
+}
+
+.compass-layer-pills button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid #e1e2d7;
+  background: #fff;
+  font-size: 9px;
+  color: #626b56;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.compass-layer-pills button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compass-layer-pills button.is-active {
+  border-color: #c8a287;
+  background: #fdf2ea;
+  color: #7f4428;
+  font-weight: 600;
+}
+
+.compass-layer-pills button i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.compass-layer-pills button small {
+  color: #9ba18f;
+  font-size: 8px;
+}
+
+.compass-empty-state {
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--cmp-line);
+  background: #fff9eb;
+  color: #825634;
+  font-size: 10.5px;
+  line-height: 1.6;
+  flex-shrink: 0;
+}
+
+.compass-player {
+  margin-top: 10px;
+  padding: 8px 14px;
+  border: 1px solid #e6e9dd;
+  border-radius: 11px;
+  background: #fff;
+  display: grid;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.compass-player-top {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.compass-step-callout {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.compass-step-badges {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.compass-step-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #a36a4a;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.compass-arc-jump {
+  font-size: 12px;
+  color: #3e4736;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compass-alert {
+  display: inline-block;
+  margin-top: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #fdf3dc;
+  border: 1px solid #ead19a;
+  color: #8a5b1e;
+  font-size: 8.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.compass-player-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.compass-step-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid #dfe2d4;
+  background: #fff;
+  color: #5d6750;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.compass-next-btn {
+  background: #556448;
+  border-color: #556448;
+  color: #fff;
+}
+
+.compass-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid #dfe2d4;
+  background: #fff;
+  color: #89907c;
+}
+
+.compass-scrub-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compass-scrub-controls input[type='range'] {
+  flex: 1;
+  margin: 0;
+  accent-color: #6b7d56;
+}
+
+.compass-pct {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b775b;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}
+
+.compass-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: radial-gradient(ellipse at center, #fbf9f2 10%, #f3f1e9 80%);
+}
+
+.compass-stage-inner {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+
+.compass-board {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  max-width: 100%;
+  max-height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compass-board canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.compass-stats {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid #e6e9dd;
+  background: #fff;
+  border-radius: 11px;
+  padding: 12px 4px;
+  flex-shrink: 0;
+}
+
+.compass-stats > div {
+  text-align: center;
+  padding: 0 8px;
+}
+
+.compass-stats > div + div {
+  border-left: 1px solid #eceee4;
+}
+
+.compass-stats span {
+  display: block;
+  font-size: 8px;
+  color: #a0a792;
+}
+
+.compass-stats strong {
+  display: block;
+  font-size: 15px;
+  color: #626f51;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.compass-stats small {
+  font-size: 8px;
+  font-weight: 400;
+  color: #a5ac98;
+  margin-left: 3px;
+}
+
+.compass-seq-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.compass-seq-header .panel-title {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.compass-seq-tabs {
+  display: inline-flex;
+  background: #f2f3ec;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.compass-seq-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font-size: 8px;
+  color: #828976;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.compass-seq-tabs button.is-active {
+  background: #fff;
+  color: #505c43;
+  font-weight: 600;
+}
+
+.compass-seq-empty {
+  font-size: 10px;
+  color: #9aa191;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.compass-seq-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #d4dbca transparent;
+}
+
+.compass-seq-item {
+  display: grid;
+  grid-template-columns: auto 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid #eef0e7;
+  background: #fff;
+  text-align: left;
+  font-size: 9px;
+  color: #636b57;
+}
+
+.compass-seq-item.is-multi-center {
+  grid-template-columns: auto 14px 46px minmax(0, 1fr) auto;
+}
+
+.compass-seq-item.is-current {
+  background: #fdf2ea;
+  border-color: #dfb495;
+  color: #8d4b2d;
+}
+
+.compass-seq-item.is-done {
+  background: #f8f9f4;
+  color: #9ba18e;
+}
+
+.compass-seq-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #939985;
+  font-family: monospace;
+  font-size: 8px;
+}
+
+.compass-seq-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.compass-seq-center {
+  color: #7d8571;
+  font-family: monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.compass-seq-radius,
+.compass-seq-angle {
+  color: #4f5845;
+  font-family: monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.compass-seq-radius {
+  text-align: right;
+}
+
+.compass-seq-angle {
+  color: #5b634f;
+  padding-left: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compass-seq-item small {
+  color: #9ca290;
+  font-size: 8px;
+}
+
+.compass-studio > .studio-footer {
+  margin-top: 10px;
+  padding: 8px 0 0;
+  flex-shrink: 0;
+}
+
+.compass-spin {
+  animation: compass-rot 1s linear infinite;
+}
+
+@keyframes compass-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (min-width: 1550px) {
+  .compass-layout {
+    grid-template-columns: 240px minmax(0, 1fr) 244px;
+    gap: 20px;
+  }
+
+  .compass-controls,
+  .compass-sequence-panel {
+    padding: 16px 18px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .compass-layout {
+    grid-template-columns: 206px minmax(0, 1fr) 208px;
+    gap: 12px;
+  }
+
+  .compass-heading {
+    align-items: flex-start;
+  }
+
+  .compass-actions .btn {
+    font-size: 10px;
+    padding: 9px 11px;
+  }
+
+  .compass-stats strong {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 950px) {
+  .compass-studio {
+    flex: 0 0 auto;
+    min-height: auto;
+  }
+
+  .compass-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 14px;
+    flex: 0 0 auto;
+    align-items: start;
+  }
+
+  .compass-controls {
+    height: auto;
+    overflow: visible;
+  }
+
+  .compass-right-column {
+    grid-column: 1 / -1;
+    height: auto;
+  }
+
+  .compass-sequence-panel {
+    height: auto;
+  }
+
+  .compass-seq-list {
+    max-height: 290px;
+  }
+
+  .compass-workspace {
+    height: auto;
+  }
+
+  .compass-canvas-panel {
+    flex: 0 0 auto;
+  }
+
+  .compass-stage {
+    flex: 0 0 auto;
+    padding: 18px;
+  }
+
+  .compass-stage-inner {
+    height: auto;
+    container-type: normal;
+  }
+
+  .compass-board {
+    width: min(100%, 480px);
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .compass-studio > .studio-footer {
+    margin-top: 20px;
+    padding: 14px 0 4px;
+  }
+}
+
+@media (max-width: 700px) {
+  .compass-heading h1 {
+    font-size: 28px;
+  }
+
+  .compass-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .compass-actions .btn {
+    flex: 1 1 auto;
+    font-size: 10px;
+    padding: 10px 9px;
+  }
+
+  .compass-journey {
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 9px;
+    padding: 12px 0 16px;
+  }
+
+  .compass-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compass-right-column {
+    grid-column: auto;
+  }
+
+  .compass-stage {
+    padding: 12px;
+  }
+
+  .compass-player-top {
+    flex-wrap: wrap;
+  }
+
+  .compass-step-callout {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .compass-arc-jump {
+    white-space: normal;
+  }
+
+  .compass-player-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

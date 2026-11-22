@@ -1,9 +1,44 @@
 import type { Artwork } from "./types";
 
-export const STORAGE_KEY = "giftcraft.artworks.v1";
+export const STORAGE_KEY = "tracecraft.artworks.v1";
+
+const RETIRED_KINDS = new Set([
+  "bracelet",
+  "card",
+  "gift-box",
+  "origami",
+  "chinese-knots",
+  "paper-cutting",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function hasValidSource(data: Record<string, unknown>): boolean {
+  if (data.sourceKind !== "example" && data.sourceKind !== "photo") return false;
+  if (typeof data.sourceName !== "string") return false;
+  if (data.exampleId !== undefined && typeof data.exampleId !== "string") return false;
+  if (data.photoDataUrl !== undefined && typeof data.photoDataUrl !== "string") return false;
+  return true;
+}
+
+function isValidFraming(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.zoom === "number" &&
+    typeof value.x === "number" &&
+    typeof value.y === "number"
+  );
+}
+
+function isRetiredLegacyArtwork(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.kind === "string" &&
+    RETIRED_KINDS.has(value.kind)
+  );
 }
 
 function isArtwork(value: unknown): value is Artwork {
@@ -16,24 +51,6 @@ function isArtwork(value: unknown): value is Artwork {
   )
     return false;
   const data = value.data;
-  if (value.kind === "bracelet") {
-    return (
-      typeof data.wristSize === "number" &&
-      typeof data.cordColor === "string" &&
-      Array.isArray(data.beads) &&
-      data.beads.every(
-        (bead) =>
-          isRecord(bead) &&
-          typeof bead.id === "string" &&
-          typeof bead.name === "string" &&
-          typeof bead.color === "string" &&
-          typeof bead.size === "number" &&
-          ["glass", "pearl", "wood", "crystal", "spacer"].includes(
-            String(bead.material),
-          ),
-      )
-    );
-  }
   if (value.kind === "beads") {
     return (
       Number.isInteger(data.columns) &&
@@ -57,24 +74,54 @@ function isArtwork(value: unknown): value is Artwork {
       )
     );
   }
-  if (value.kind === "gift-box") {
+  if (value.kind === "embroidery") {
     return (
-      ["rectangle", "square"].includes(String(data.shape)) &&
-      typeof data.color === "string" &&
-      typeof data.fillerColor === "string" &&
-      typeof data.ribbonColor === "string" &&
-      typeof data.note === "string" &&
-      Array.isArray(data.items) &&
-      data.items.every(
-        (item) =>
-          isRecord(item) &&
-          typeof item.id === "string" &&
-          typeof item.artworkId === "string" &&
-          ["x", "y", "rotation", "scale"].every(
-            (key) =>
-              typeof item[key] === "number" && Number.isFinite(item[key]),
-          ),
-      )
+      hasValidSource(data) &&
+      typeof data.stitchMode === "string" &&
+      typeof data.gridSize === "number" &&
+      typeof data.maxColors === "number" &&
+      typeof data.hoopSizeCm === "number" &&
+      typeof data.fabricId === "string"
+    );
+  }
+  if (value.kind === "wire-craft") {
+    return (
+      hasValidSource(data) &&
+      typeof data.layoutMode === "string" &&
+      typeof data.colorWeaveMode === "string" &&
+      typeof data.contrastMode === "string" &&
+      typeof data.pegCount === "number" &&
+      typeof data.stepCount === "number" &&
+      typeof data.threadDarkness === "number" &&
+      typeof data.boardSizeCm === "number" &&
+      typeof data.paletteId === "string" &&
+      typeof data.usePhotoColors === "boolean" &&
+      isValidFraming(data.framing)
+    );
+  }
+  if (value.kind === "compass") {
+    return (
+      hasValidSource(data) &&
+      typeof data.algorithm === "string" &&
+      typeof data.colorMode === "string" &&
+      typeof data.contrastMode === "string" &&
+      typeof data.ringCount === "number" &&
+      typeof data.paperSizeCm === "number" &&
+      typeof data.paletteId === "string" &&
+      typeof data.usePhotoColors === "boolean" &&
+      isValidFraming(data.framing)
+    );
+  }
+  if (value.kind === "carving") {
+    return (
+      hasValidSource(data) &&
+      typeof data.algorithm === "string" &&
+      typeof data.contrastMode === "string" &&
+      typeof data.bridgeWidthMm === "number" &&
+      typeof data.gridSize === "number" &&
+      typeof data.frameSizeCm === "number" &&
+      typeof data.materialId === "string" &&
+      isValidFraming(data.framing)
     );
   }
   return false;
@@ -84,9 +131,13 @@ export function readArtworks(storage: Pick<Storage, "getItem">): Artwork[] {
   const raw = storage.getItem(STORAGE_KEY);
   if (!raw) return [];
   const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed) || !parsed.every(isArtwork))
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every((item) => isArtwork(item) || isRetiredLegacyArtwork(item))
+  ) {
     throw new Error("Invalid saved artworks");
-  return parsed;
+  }
+  return parsed.filter(isArtwork);
 }
 
 export function writeArtworks(
@@ -94,4 +145,26 @@ export function writeArtworks(
   artworks: Artwork[],
 ) {
   storage.setItem(STORAGE_KEY, JSON.stringify(artworks));
+}
+
+export function readStepProgress(storageKey: string, signature: string): number | null {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { signature?: string; step?: number };
+    if (parsed.signature === signature && typeof parsed.step === "number" && Number.isFinite(parsed.step)) {
+      return parsed.step;
+    }
+  } catch {
+    // Optional progress persistence never blocks UI
+  }
+  return null;
+}
+
+export function writeStepProgress(storageKey: string, signature: string, step: number) {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ signature, step }));
+  } catch {
+    // Optional progress persistence never blocks UI
+  }
 }
