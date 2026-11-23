@@ -1,0 +1,292 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-22T17:23:18.250Z",
+  "nodeVersion": "v26.13.1",
+  "cases": {
+    "beads:portrait-32-16": {
+      "studio": "beads",
+      "tier": "default",
+      "outputHash": "063e2b3e61445171",
+      "metrics": {
+        "beadCount": 1024,
+        "paletteSize": 13,
+        "meanRedmeanError": 68.3601,
+        "p95RedmeanError": 107.8737,
+        "edgeDetailPreservation": 0.704989
+      },
+      "baselineTimingMs": {
+        "p50Ms": 4.719,
+        "p95Ms": 5.1,
+        "heapDeltaKb": 6948
+      }
+    },
+    "beads:portrait-64-24": {
+      "studio": "beads",
+      "tier": "stress",
+      "outputHash": "5bd4e3e515fc52e7",
+      "metrics": {
+        "beadCount": 4096,
+        "paletteSize": 19,
+        "meanRedmeanError": 69.5077,
+        "p95RedmeanError": 109.566,
+        "edgeDetailPreservation": 0.713462
+      },
+      "baselineTimingMs": {
+        "p50Ms": 18.77,
+        "p95Ms": 18.77,
+        "heapDeltaKb": 4556
+      }
+    },
+    "embroidery:camellia-long-short-36": {
+      "studio": "embroidery",
+      "tier": "default",
+      "outputHash": "a4c9c4db6be66129",
+      "metrics": {
+        "totalStitches": 392,
+        "layerCount": 9,
+        "totalMeters": 4.11,
+        "meanRedmeanError": 22.9086,
+        "foregroundCoverageRatio": 1,
+        "meanFlowAlignmentDeg": 1.789,
+        "medianIntraLayerJumpCells": 0.5869,
+        "localRoutingRatio": 0.963446
+      },
+      "baselineTimingMs": {
+        "p50Ms": 5.373,
+        "p95Ms": 5.608,
+        "heapDeltaKb": 4242
+      }
+    },
+    "embroidery:strawberry-punch-36": {
+      "studio": "embroidery",
+      "tier": "default",
+      "outputHash": "d2e5643f8055e647",
+      "metrics": {
+        "totalStitches": 240,
+        "layerCount": 7,
+        "totalMeters": 4.63,
+        "meanRedmeanError": 17.7156,
+        "foregroundCoverageRatio": 1,
+        "meanFlowAlignmentDeg": 0,
+        "medianIntraLayerJumpCells": 0.83,
+        "localRoutingRatio": 0.935622
+      },
+      "baselineTimingMs": {
+        "p50Ms": 1.894,
+        "p95Ms": 3.315,
+        "heapDeltaKb": 11011
+      }
+    },
+    "embroidery:portrait-cross-46": {
+      "studio": "embroidery",
+      "tier": "default",
+      "outputHash": "91677e64e0a94048",
+      "metrics": {
+        "totalStitches": 914,
+        "layerCount": 12,
+        "totalMeters": 5.66,
+        "meanRedmeanError": 47.8372,
+        "foregroundCoverageRatio": 1,
+        "meanFlowAlignmentDeg": 0,
+        "medianIntraLayerJumpCells": 0.7724,
+        "localRoutingRatio": 0.86918
+      },
+      "baselineTimingMs": {
+        "p50Ms": 5.824,
+        "p95Ms": 6.119,
+        "heapDeltaKb": 18606
+      }
+    },
+    "embroidery:portrait-long-short-56": {
+      "studio": "embroidery",
+      "tier": "stress",
+      "outputHash": "a932b9e7c9bd7d20",
+      "metrics": {
+        "totalStitches": 830,
+        "layerCount": 13,
+        "totalMeters": 5.29,
+        "meanRedmeanError": 47.7705,
+        "foregroundCoverageRatio": 1,
+        "meanFlowAlignmentDeg": 1.7367,
+        "medianIntraLayerJumpCells": 0.6215,
+        "localRoutingRatio": 0.892289
+      },
+      "baselineTimingMs": {
+        "p50Ms": 6.624,
+        "p95Ms": 6.624,
+        "heapDeltaKb": 20771
+      }
+    },
+    "wire:portrait-ring-200-2000": {
+      "studio": "wire-craft",
+      "tier": "default",
+      "outputHash": "f941db74da3d8437",
+      "metrics": {
+        "stepCount": 2000,
+        "pegCount": 200,
+        "layerCount": 1,
+        "totalLengthMeters": 326.26,
+        "weightedLossRatio": 0.320278,
+        "outOfMaskPixels": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 568.151,
+        "p95Ms": 579.862,
+        "wireCoverageRebuildMs": 16.156,
+        "heapDeltaKb": 5917
+      }
+    },
+    "wire:cat-contour-multi-120-800": {
+      "studio": "wire-craft",
+      "tier": "default",
+      "outputHash": "375df2b307467737",
+      "metrics": {
+        "stepCount": 678,
+        "pegCount": 94,
+        "layerCount": 3,
+        "totalLengthMeters": 39.32,
+        "weightedLossRatio": 0,
+        "outOfMaskPixels": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 25.164,
+        "p95Ms": 25.65,
+        "wireCoverageRebuildMs": 1.898,
+        "heapDeltaKb": 11142
+      }
+    },
+    "wire:portrait-ring-240-4000": {
+      "studio": "wire-craft",
+      "tier": "stress",
+      "outputHash": "4a2198c7e78c0ad1",
+      "metrics": {
+        "stepCount": 4000,
+        "pegCount": 240,
+        "layerCount": 1,
+        "totalLengthMeters": 576.53,
+        "weightedLossRatio": 0.11231,
+        "outOfMaskPixels": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 1219.322,
+        "p95Ms": 1219.322,
+        "wireCoverageRebuildMs": 27.929,
+        "heapDeltaKb": 5146
+      }
+    },
+    "compass:portrait-concentric-40": {
+      "studio": "compass",
+      "tier": "default",
+      "outputHash": "ce924e18a23f8acb",
+      "metrics": {
+        "stepCount": 165,
+        "layerCount": 1,
+        "totalLengthMeters": 9.54,
+        "rasterizedWeightedMse": 0.580851,
+        "shortArcRatio": 0.090909,
+        "penChangeCount": 0,
+        "centerChangeCount": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 15.876,
+        "p95Ms": 17.244,
+        "heapDeltaKb": 26691
+      }
+    },
+    "compass:portrait-spiral-64": {
+      "studio": "compass",
+      "tier": "stress",
+      "outputHash": "ccea983dc9a731fb",
+      "metrics": {
+        "stepCount": 64,
+        "layerCount": 1,
+        "totalLengthMeters": 17.29,
+        "rasterizedWeightedMse": 0.528178,
+        "shortArcRatio": 0,
+        "penChangeCount": 0,
+        "centerChangeCount": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 24.878,
+        "p95Ms": 24.878,
+        "heapDeltaKb": 0
+      }
+    },
+    "compass:rose-tri-multi-64": {
+      "studio": "compass",
+      "tier": "stress",
+      "outputHash": "ff30b99ce24a524b",
+      "metrics": {
+        "stepCount": 247,
+        "layerCount": 3,
+        "totalLengthMeters": 13.99,
+        "rasterizedWeightedMse": 0.233467,
+        "shortArcRatio": 0.032389,
+        "penChangeCount": 2,
+        "centerChangeCount": 2
+      },
+      "baselineTimingMs": {
+        "p50Ms": 7.333,
+        "p95Ms": 7.333,
+        "heapDeltaKb": 0
+      }
+    },
+    "carving:portrait-stencil-128": {
+      "studio": "carving",
+      "tier": "default",
+      "outputHash": "918d1cc2990cc1bb",
+      "metrics": {
+        "stepCount": 7,
+        "layerCount": 1,
+        "floatingIslandsBridged": 4,
+        "allLayers4Connected": 1,
+        "targetMaskIoU": 0.958434,
+        "bridgeAreaRatio": 0.000671,
+        "tinyCutRatio": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 13.96,
+        "p95Ms": 17.977,
+        "heapDeltaKb": 6863
+      }
+    },
+    "carving:portrait-woodcut-160": {
+      "studio": "carving",
+      "tier": "stress",
+      "outputHash": "f309d462cc7b5e9f",
+      "metrics": {
+        "stepCount": 51,
+        "layerCount": 1,
+        "floatingIslandsBridged": 6,
+        "allLayers4Connected": 1,
+        "targetMaskIoU": 0.876252,
+        "bridgeAreaRatio": 0.000664,
+        "tinyCutRatio": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 19.029,
+        "p95Ms": 19.029,
+        "heapDeltaKb": 16306
+      }
+    },
+    "carving:portrait-shadowbox-160": {
+      "studio": "carving",
+      "tier": "stress",
+      "outputHash": "7377b8c5616fa55f",
+      "metrics": {
+        "stepCount": 32,
+        "layerCount": 4,
+        "floatingIslandsBridged": 21,
+        "allLayers4Connected": 1,
+        "targetMaskIoU": 0.96201,
+        "bridgeAreaRatio": 0.000801,
+        "tinyCutRatio": 0
+      },
+      "baselineTimingMs": {
+        "p50Ms": 28.412,
+        "p95Ms": 28.412,
+        "heapDeltaKb": 0
+      }
+    }
+  }
+}
