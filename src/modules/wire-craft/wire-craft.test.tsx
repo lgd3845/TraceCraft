@@ -5,6 +5,7 @@ import type { StudioContextValue } from '../../lib/types'
 import WireCraftStudio from './WireCraftStudio'
 import { DEFAULT_PHOTO_FRAMING, photoCropRect } from './stringArtCanvas'
 import {
+  advanceStringArtCoverage,
   applyThread,
   BOARD_SIZES_CM,
   buildNailTemplateSvg,
@@ -15,6 +16,7 @@ import {
   createExampleLayers,
   DEFAULT_STRING_MAP_SIZE,
   generateStringArt,
+  generateStringArtAsync,
   padPeg,
   rgbaToDarknessMap,
   rgbaToPhotoLayers,
@@ -223,6 +225,81 @@ describe('shared-coverage and free-contour string art engine', () => {
     expect(long.threadDarkness).toBe(short.threadDarkness)
     expect(long.steps.slice(0, short.steps.length)).toEqual(short.steps)
     expect(stringArtCoverage(long, short.steps.length)).toEqual(stringArtCoverage(short))
+  })
+
+  it('advances ring coverage incrementally with exact bit-for-bit parity', () => {
+    const layers = createExampleLayers('portrait', DEFAULT_STRING_MAP_SIZE, STRING_PALETTES[0], 'mono')
+    const plan = generateStringArt(layers, DEFAULT_STRING_MAP_SIZE, 160, 400)
+    const fields = plan.layers.map(() => new Float32Array(plan.mapSize * plan.mapSize))
+    const layerMap = new Map(plan.layers.map((layer, index) => [layer.index, index]))
+    let prev = 0
+    for (const checkpoint of [50, 120, 300]) {
+      advanceStringArtCoverage(plan, fields, layerMap, prev, checkpoint)
+      expect(fields).toEqual(stringArtCoverage(plan, checkpoint))
+      prev = checkpoint
+    }
+  })
+
+  it('matches synchronous output in generateStringArtAsync across layouts and aborts early on cancel', async () => {
+    const ringLayers = createExampleLayers('portrait', 160, STRING_PALETTES[0], 'mono')
+    const syncRing = generateStringArt(ringLayers, 160, 120, 120, 20, 'ring', STRING_PALETTES[0])
+    const asyncRing = await generateStringArtAsync(
+      ringLayers,
+      160,
+      120,
+      120,
+      20,
+      'ring',
+      STRING_PALETTES[0],
+      undefined,
+      { chunkSteps: 17, yieldChunk: async () => {} },
+    )
+    expect(asyncRing).not.toBeNull()
+    expect(asyncRing!.sequence).toEqual(syncRing.sequence)
+    expect(asyncRing!.steps).toEqual(syncRing.steps)
+    expect(asyncRing!.layers).toEqual(syncRing.layers)
+    expect(asyncRing!.totalLengthMeters).toBe(syncRing.totalLengthMeters)
+
+    const palette = STRING_PALETTES.find(p => p.id === 'starlight-gold')!
+    const contourLayers = createExampleLayers('crescent', 160, palette, 'multi', 'portrait')
+    const syncContour = generateStringArt(contourLayers, 160, CONTOUR_PEG_COUNTS[0], 140, 20, 'contour', palette)
+    const asyncContour = await generateStringArtAsync(
+      contourLayers,
+      160,
+      CONTOUR_PEG_COUNTS[0],
+      140,
+      20,
+      'contour',
+      palette,
+      undefined,
+      { chunkSteps: 19, yieldChunk: async () => {} },
+    )
+    expect(asyncContour).not.toBeNull()
+    expect(asyncContour!.sequence).toEqual(syncContour.sequence)
+    expect(asyncContour!.steps).toEqual(syncContour.steps)
+    expect(asyncContour!.layers).toEqual(syncContour.layers)
+    expect(asyncContour!.totalLengthMeters).toBe(syncContour.totalLengthMeters)
+
+    let yields = 0
+    const aborted = await generateStringArtAsync(
+      ringLayers,
+      160,
+      120,
+      120,
+      20,
+      'ring',
+      STRING_PALETTES[0],
+      undefined,
+      {
+        chunkSteps: 16,
+        shouldAbort: () => yields >= 2,
+        yieldChunk: async () => {
+          yields++
+        },
+      },
+    )
+    expect(aborted).toBeNull()
+    expect(yields).toBe(2)
   })
 
   it('uses additive coverage rather than losing line strength in already dark details', () => {

@@ -3,6 +3,7 @@ import {
   decodeLocalImage,
   DEFAULT_PHOTO_FRAMING,
   photoCropRect,
+  readCroppedImageRgba,
   renderPhotoFraming,
   sourcePreview,
 } from '../wire-craft/stringArtCanvas'
@@ -22,6 +23,7 @@ export {
   decodeLocalImage,
   DEFAULT_PHOTO_FRAMING,
   photoCropRect,
+  readCroppedImageRgba,
   renderPhotoFraming,
   sourcePreview,
 }

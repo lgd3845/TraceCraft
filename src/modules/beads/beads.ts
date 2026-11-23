@@ -80,6 +80,17 @@ export function hexToRgb(hex: string): RGB {
   return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)]
 }
 
+const hexRgbCache = new Map<string, RGB>()
+
+function hexToRgbCached(hex: string): RGB {
+  let cached = hexRgbCache.get(hex)
+  if (!cached) {
+    cached = hexToRgb(hex)
+    hexRgbCache.set(hex, cached)
+  }
+  return cached
+}
+
 // Red-mean distance gives green and dark shades more weight than plain RGB distance.
 function colorDistance(a: RGB, b: RGB) {
   const redMean = (a[0] + b[0]) / 2
@@ -92,7 +103,7 @@ export function nearestColor(rgb: RGB, palette: readonly BeadColor[] = BEADS_PAL
   let nearest = palette[0]
   let minimum = Infinity
   for (const color of palette) {
-    const distance = colorDistance(rgb, hexToRgb(color.color))
+    const distance = colorDistance(rgb, hexToRgbCached(color.color))
     if (distance < minimum) { minimum = distance; nearest = color }
   }
   return nearest
@@ -131,8 +142,8 @@ export function quantizePixels(
     let bestScore = -1
     for (const candidate of candidates) {
       if (selected.includes(candidate)) continue
-      const rgb = hexToRgb(candidate.color)
-      const distance = Math.min(...selected.map(color => colorDistance(rgb, hexToRgb(color.color))))
+      const rgb = hexToRgbCached(candidate.color)
+      const distance = Math.min(...selected.map(color => colorDistance(rgb, hexToRgbCached(color.color))))
       const score = distance * frequencies.get(candidate.code)!
       if (score > bestScore) { bestScore = score; best = candidate }
     }

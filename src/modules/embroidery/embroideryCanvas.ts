@@ -31,7 +31,7 @@ function getContext(canvas: HTMLCanvasElement, width: number, height: number) {
   return ctx
 }
 
-function readCroppedImageRgba(
+export function readEmbroideryImageRgba(
   image: HTMLImageElement,
   targetMax = 128,
 ): { rgba: Uint8ClampedArray; width: number; height: number } {
@@ -58,7 +58,7 @@ export function sampleImageToEmbroideryGrid(
   maxColors: number,
   removeBg = true,
 ): QuantizedEmbroideryGrid {
-  const { rgba, width, height } = readCroppedImageRgba(image, 128)
+  const { rgba, width, height } = readEmbroideryImageRgba(image, 128)
   return quantizeImageToEmbroideryGrid(rgba, width, height, gridSize, maxColors, removeBg)
 }
 
@@ -358,6 +358,141 @@ function renderPunchLoop3D(
   ctx.restore()
 }
 
+function drawGuideContours(
+  ctx: CanvasRenderingContext2D,
+  plan: EmbroideryPlan,
+  fabric: FabricPreset,
+  cx: number,
+  cy: number,
+  activeR: number,
+  scale: number,
+) {
+  ctx.save()
+  ctx.strokeStyle = fabric.darkFabric ? 'rgba(130, 178, 224, 0.34)' : 'rgba(54, 114, 166, 0.30)'
+  ctx.lineWidth = Math.max(0.8, 1.15 * scale)
+  ctx.setLineDash([4 * scale, 3 * scale])
+  for (const pl of plan.contours) {
+    if (pl.points.length < 2) continue
+    ctx.beginPath()
+    pl.points.forEach((pt, idx) => {
+      const px = cx + pt.x * activeR
+      const py = cy + pt.y * activeR
+      if (idx === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    })
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+function drawRemainingGhostStitches(
+  ctx: CanvasRenderingContext2D,
+  plan: EmbroideryPlan,
+  fabric: FabricPreset,
+  drawnCount: number,
+  total: number,
+  cx: number,
+  cy: number,
+  activeR: number,
+  cellPx: number,
+) {
+  ctx.save()
+  ctx.lineCap = 'round'
+  ctx.globalAlpha = fabric.darkFabric ? 0.16 : 0.13
+  ctx.lineWidth = Math.max(1.2, cellPx * 0.35)
+  for (let i = drawnCount; i < total; i++) {
+    const s = plan.stitches[i]
+    ctx.strokeStyle = s.color
+    ctx.beginPath()
+    ctx.moveTo(cx + s.x0 * activeR, cy + s.y0 * activeR)
+    ctx.lineTo(cx + s.x1 * activeR, cy + s.y1 * activeR)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+function drawSingleEmbroideryStitch(
+  ctx: CanvasRenderingContext2D,
+  s: EmbroideryStitch,
+  cx: number,
+  cy: number,
+  activeR: number,
+  cellPx: number,
+  scale: number,
+) {
+  if (s.kind === 'punch-loop') {
+    const mx = cx + ((s.x0 + s.x1) * 0.5) * activeR
+    const my = cy + ((s.y0 + s.y1) * 0.5) * activeR
+    renderPunchLoop3D(ctx, mx, my, Math.max(2.6, cellPx * 0.54), s.angle, s.color)
+    return
+  }
+
+  const p0x = cx + s.x0 * activeR
+  const p0y = cy + s.y0 * activeR
+  const p1x = cx + s.x1 * activeR
+  const p1y = cy + s.y1 * activeR
+
+  if (s.kind === 'cross') {
+    const legW = Math.max(1.6, cellPx * 0.32)
+    renderThreadSegment3D(ctx, p0x, p1y, p1x, p0y, s.color, legW, -Math.PI / 4, scale)
+    ctx.fillStyle = 'rgba(18, 12, 8, 0.22)'
+    ctx.beginPath()
+    ctx.arc((p0x + p1x) * 0.5, (p0y + p1y) * 0.5, legW * 0.56, 0, Math.PI * 2)
+    ctx.fill()
+    renderThreadSegment3D(ctx, p0x, p0y, p1x, p1y, s.color, legW, Math.PI / 4, scale)
+    return
+  }
+
+  const strokeW = s.kind === 'backstitch'
+    ? Math.max(1.3, cellPx * 0.34)
+    : s.kind === 'satin'
+      ? Math.max(2.0, cellPx * 0.56)
+      : Math.max(2.4, cellPx * 0.68)
+  renderThreadSegment3D(ctx, p0x, p0y, p1x, p1y, s.color, strokeW, s.angle, scale)
+}
+
+function drawActiveNeedleIndicator(
+  ctx: CanvasRenderingContext2D,
+  active: EmbroideryStitch,
+  fabric: FabricPreset,
+  cx: number,
+  cy: number,
+  activeR: number,
+  scale: number,
+) {
+  const ax = cx + active.x0 * activeR
+  const ay = cy + active.y0 * activeR
+  const bx = cx + active.x1 * activeR
+  const by = cy + active.y1 * activeR
+  const accent = fabric.darkFabric ? '#ff9d66' : '#c7422f'
+  ctx.save()
+  ctx.strokeStyle = accent
+  ctx.lineWidth = Math.max(2, 2.8 * scale)
+  ctx.setLineDash([4 * scale, 2.5 * scale])
+  ctx.beginPath()
+  ctx.moveTo(ax, ay)
+  ctx.lineTo(bx, by)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  ctx.fillStyle = accent
+  ctx.beginPath()
+  ctx.arc(ax, ay, Math.max(3.5, 4.5 * scale), 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = Math.max(1.2, 1.6 * scale)
+  ctx.stroke()
+
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.arc(bx, by, Math.max(4, 5 * scale), 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = accent
+  ctx.lineWidth = Math.max(2, 2.5 * scale)
+  ctx.stroke()
+  ctx.restore()
+}
+
 export function drawEmbroideryScene(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -454,117 +589,87 @@ export function drawEmbroideryScene(
 
   // Water-soluble blue guide outline under stitches in guide mode
   if (options.mode === 'guide') {
-    ctx.save()
-    ctx.strokeStyle = fabric.darkFabric ? 'rgba(130, 178, 224, 0.34)' : 'rgba(54, 114, 166, 0.30)'
-    ctx.lineWidth = Math.max(0.8, 1.15 * scale)
-    ctx.setLineDash([4 * scale, 3 * scale])
-    for (const pl of plan.contours) {
-      if (pl.points.length < 2) continue
-      ctx.beginPath()
-      pl.points.forEach((pt, idx) => {
-        const p = toCanvas(pt.x, pt.y)
-        if (idx === 0) ctx.moveTo(p.x, p.y)
-        else ctx.lineTo(p.x, p.y)
-      })
-      ctx.stroke()
-    }
-    ctx.restore()
+    drawGuideContours(ctx, plan, fabric, cx, cy, activeR, scale)
   }
 
-  const total = Math.max(1, plan.stitches.length)
+  const stitchCount = plan.stitches.length
+  const total = Math.max(1, stitchCount)
   const clampStep = Math.max(1, Math.min(total, Math.trunc(options.currentStep)))
-  const drawnCount = options.mode === 'realistic' ? total : clampStep
+  const drawnCount = Math.min(stitchCount, options.mode === 'realistic' ? total : clampStep)
 
   // Optional ghost preview of remaining unstitched pattern in guide mode
-  if (options.mode === 'guide' && options.showGhost && drawnCount < total) {
-    ctx.save()
-    ctx.lineCap = 'round'
-    ctx.globalAlpha = fabric.darkFabric ? 0.16 : 0.13
-    ctx.lineWidth = Math.max(1.2, cellPx * 0.35)
-    for (let i = drawnCount; i < total; i++) {
-      const s = plan.stitches[i]
-      const p0 = toCanvas(s.x0, s.y0)
-      const p1 = toCanvas(s.x1, s.y1)
-      ctx.strokeStyle = s.color
-      ctx.beginPath()
-      ctx.moveTo(p0.x, p0.y)
-      ctx.lineTo(p1.x, p1.y)
-      ctx.stroke()
-    }
-    ctx.restore()
+  if (options.mode === 'guide' && options.showGhost && drawnCount < stitchCount) {
+    drawRemainingGhostStitches(ctx, plan, fabric, drawnCount, stitchCount, cx, cy, activeR, cellPx)
   }
 
   ctx.lineCap = 'round'
   for (let i = 0; i < drawnCount; i++) {
-    const s = plan.stitches[i]
-    if (s.kind === 'punch-loop') {
-      const m = toCanvas((s.x0 + s.x1) * 0.5, (s.y0 + s.y1) * 0.5)
-      renderPunchLoop3D(ctx, m.x, m.y, Math.max(2.6, cellPx * 0.54), s.angle, s.color)
-      continue
-    }
-
-    if (s.kind === 'cross') {
-      const p0 = toCanvas(s.x0, s.y0)
-      const p1 = toCanvas(s.x1, s.y1)
-      const legW = Math.max(1.6, cellPx * 0.32)
-      // Bottom diagonal leg (/)
-      renderThreadSegment3D(ctx, p0.x, p1.y, p1.x, p0.y, s.color, legW, -Math.PI / 4, scale)
-      // Center crossing occlusion shadow where top leg sits over bottom leg
-      ctx.fillStyle = 'rgba(18, 12, 8, 0.22)'
-      ctx.beginPath()
-      ctx.arc((p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5, legW * 0.56, 0, Math.PI * 2)
-      ctx.fill()
-      // Top diagonal leg (\)
-      renderThreadSegment3D(ctx, p0.x, p0.y, p1.x, p1.y, s.color, legW, Math.PI / 4, scale)
-      continue
-    }
-
-    const p0 = toCanvas(s.x0, s.y0)
-    const p1 = toCanvas(s.x1, s.y1)
-    const strokeW = s.kind === 'backstitch'
-      ? Math.max(1.3, cellPx * 0.34)
-      : s.kind === 'satin'
-        ? Math.max(2.0, cellPx * 0.56)
-        : Math.max(2.4, cellPx * 0.68)
-    renderThreadSegment3D(ctx, p0.x, p0.y, p1.x, p1.y, s.color, strokeW, s.angle, scale)
+    drawSingleEmbroideryStitch(ctx, plan.stitches[i], cx, cy, activeR, cellPx, scale)
   }
 
   // Highlight active needle entry/exit indicator in interactive step-by-step guide mode
-  if (options.mode === 'guide' && plan.stitches.length > 0) {
-    const active: EmbroideryStitch = plan.stitches[clampStep - 1]
-    const a = toCanvas(active.x0, active.y0)
-    const b = toCanvas(active.x1, active.y1)
-    const accent = fabric.darkFabric ? '#ff9d66' : '#c7422f'
-    ctx.save()
-    ctx.strokeStyle = accent
-    ctx.lineWidth = Math.max(2, 2.8 * scale)
-    ctx.setLineDash([4 * scale, 2.5 * scale])
-    ctx.beginPath()
-    ctx.moveTo(a.x, a.y)
-    ctx.lineTo(b.x, b.y)
-    ctx.stroke()
-    ctx.setLineDash([])
-
-    // Solid dot = needle up (起针), ringed dot = needle down (落针)
-    ctx.fillStyle = accent
-    ctx.beginPath()
-    ctx.arc(a.x, a.y, Math.max(3.5, 4.5 * scale), 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = Math.max(1.2, 1.6 * scale)
-    ctx.stroke()
-
-    ctx.fillStyle = '#ffffff'
-    ctx.beginPath()
-    ctx.arc(b.x, b.y, Math.max(4, 5 * scale), 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = accent
-    ctx.lineWidth = Math.max(2, 2.5 * scale)
-    ctx.stroke()
-    ctx.restore()
+  if (options.mode === 'guide' && stitchCount > 0) {
+    drawActiveNeedleIndicator(ctx, plan.stitches[clampStep - 1], fabric, cx, cy, activeR, scale)
   }
 
   ctx.restore()
+}
+
+interface EmbroideryBoardCache {
+  backdrop: HTMLCanvasElement
+  stitchesLayer: HTMLCanvasElement
+  stitchesCtx: CanvasRenderingContext2D
+  renderedCount: number
+}
+
+const embroideryBoardCache = new WeakMap<EmbroideryPlan, Map<string, EmbroideryBoardCache>>()
+
+function getEmbroideryBoardCache(
+  plan: EmbroideryPlan,
+  fabric: FabricPreset,
+  mode: 'realistic' | 'guide',
+  showGrid: boolean,
+  size: number,
+  cx: number,
+  cy: number,
+  hoopRadius: number,
+  innerR: number,
+  activeR: number,
+  scale: number,
+): EmbroideryBoardCache | null {
+  if (typeof document === 'undefined') return null
+  let byKey = embroideryBoardCache.get(plan)
+  if (!byKey) {
+    byKey = new Map()
+    embroideryBoardCache.set(plan, byKey)
+  }
+  const key = `${size}|${fabric.id}|${mode}|${showGrid ? 1 : 0}`
+  let entry = byKey.get(key)
+  if (!entry) {
+    const backdrop = document.createElement('canvas')
+    const stitchesLayer = document.createElement('canvas')
+    const bCtx = backdrop.getContext('2d')
+    const stitchesCtx = stitchesLayer.getContext('2d')
+    if (!bCtx || !stitchesCtx || typeof bCtx.drawImage !== 'function') return null
+    backdrop.width = size
+    backdrop.height = size
+    stitchesLayer.width = size
+    stitchesLayer.height = size
+
+    drawWoodenHoopAndFabric(bCtx, cx, cy, hoopRadius, fabric, showGrid, plan)
+    if (mode === 'guide') {
+      bCtx.save()
+      bCtx.beginPath()
+      bCtx.arc(cx, cy, innerR - 1, 0, Math.PI * 2)
+      bCtx.clip()
+      drawGuideContours(bCtx, plan, fabric, cx, cy, activeR, scale)
+      bCtx.restore()
+    }
+
+    entry = { backdrop, stitchesLayer, stitchesCtx, renderedCount: 0 }
+    byKey.set(key, entry)
+  }
+  return entry
 }
 
 export function renderEmbroideryBoard(
@@ -576,7 +681,84 @@ export function renderEmbroideryBoard(
 ) {
   const ctx = getContext(canvas, size, size)
   ctx.clearRect(0, 0, size, size)
-  drawEmbroideryScene(ctx, size / 2, size / 2 + 6, size * 0.43, plan, fabric, options)
+  const cx = size / 2
+  const cy = size / 2 + 6
+  const hoopRadius = size * 0.43
+
+  if (options.mode === 'pattern') {
+    drawEmbroideryScene(ctx, cx, cy, hoopRadius, plan, fabric, options)
+    return
+  }
+
+  const scale = hoopRadius / 300
+  const innerR = hoopRadius * 0.905
+  const activeR = innerR * 0.92
+  const cellPx = plan.cellSizeNorm * activeR
+  const cache = getEmbroideryBoardCache(
+    plan,
+    fabric,
+    options.mode,
+    options.showGrid,
+    size,
+    cx,
+    cy,
+    hoopRadius,
+    innerR,
+    activeR,
+    scale,
+  )
+
+  if (!cache) {
+    drawEmbroideryScene(ctx, cx, cy, hoopRadius, plan, fabric, options)
+    return
+  }
+
+  const stitchCount = plan.stitches.length
+  const total = Math.max(1, stitchCount)
+  const clampStep = Math.max(1, Math.min(total, Math.trunc(options.currentStep)))
+  const drawnCount = Math.min(stitchCount, options.mode === 'realistic' ? total : clampStep)
+
+  if (drawnCount < cache.renderedCount) {
+    cache.stitchesCtx.clearRect(0, 0, size, size)
+    cache.renderedCount = 0
+  }
+  if (drawnCount > cache.renderedCount) {
+    const sCtx = cache.stitchesCtx
+    sCtx.save()
+    sCtx.beginPath()
+    sCtx.arc(cx, cy, innerR - 1, 0, Math.PI * 2)
+    sCtx.clip()
+    sCtx.lineCap = 'round'
+    for (let i = cache.renderedCount; i < drawnCount; i++) {
+      drawSingleEmbroideryStitch(sCtx, plan.stitches[i], cx, cy, activeR, cellPx, scale)
+    }
+    sCtx.restore()
+    cache.renderedCount = drawnCount
+  }
+
+  ctx.drawImage(cache.backdrop, 0, 0)
+
+  if (options.mode === 'guide' && stitchCount > 0) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, innerR - 1, 0, Math.PI * 2)
+    ctx.clip()
+    if (options.showGhost && drawnCount < stitchCount) {
+      drawRemainingGhostStitches(ctx, plan, fabric, drawnCount, stitchCount, cx, cy, activeR, cellPx)
+    }
+    ctx.restore()
+  }
+
+  ctx.drawImage(cache.stitchesLayer, 0, 0)
+
+  if (options.mode === 'guide' && stitchCount > 0) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, innerR - 1, 0, Math.PI * 2)
+    ctx.clip()
+    drawActiveNeedleIndicator(ctx, plan.stitches[clampStep - 1], fabric, cx, cy, activeR, scale)
+    ctx.restore()
+  }
 }
 
 export function embroiderySheetCanvas(

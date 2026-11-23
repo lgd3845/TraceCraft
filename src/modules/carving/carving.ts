@@ -1041,6 +1041,8 @@ function extractHollowCutRegions(
   const len = gridSize * gridSize
   const visited = new Uint8Array(len)
   const queue = new Int32Array(len)
+  const compId = new Int32Array(len)
+  let nextRegionId = 0
   const mmPerCell = (frameSizeCm * 10) / gridSize
   const cellAreaMm2 = mmPerCell * mmPerCell
   const halfMm = (frameSizeCm * 10) / 2
@@ -1068,12 +1070,12 @@ function extractHollowCutRegions(
 
     if (compCells.length < 4) continue
 
-    const regionMap = new Uint8Array(len)
+    const regionId = ++nextRegionId
     let sumX = 0
     let sumY = 0
     let nearBridge = false
     for (const c of compCells) {
-      regionMap[c] = 1
+      compId[c] = regionId
       const px = c % gridSize
       const py = Math.floor(c / gridSize)
       sumX += px
@@ -1101,7 +1103,7 @@ function extractHollowCutRegions(
     }
 
     const isHollow = (x: number, y: number) =>
-      x >= 0 && x < gridSize && y >= 0 && y < gridSize && regionMap[y * gridSize + x] === 1
+      x >= 0 && x < gridSize && y >= 0 && y < gridSize && compId[y * gridSize + x] === regionId
 
     for (const c of compCells) {
       const x = c % gridSize

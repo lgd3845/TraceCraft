@@ -805,8 +805,10 @@ export function threadFootprint(a: StringPeg, b: StringPeg, mapSize: number): Th
   if (steep) { [x0, y0] = [y0, x0]; [x1, y1] = [y1, x1] }
   if (x0 > x1) { [x0, x1] = [x1, x0]; [y0, y1] = [y1, y0] }
   const gradient = (y1 - y0) / (x1 - x0 || 1)
-  const indices: number[] = []
-  const coverage: number[] = []
+  const maxLen = (x1 - x0 + 1) * 2
+  const indices = new Int32Array(maxLen)
+  const coverage = new Float32Array(maxLen)
+  let count = 0
   for (let x = x0; x <= x1; x++) {
     const y = y0 + (x - x0) * gradient
     const low = Math.floor(y)
@@ -816,11 +818,83 @@ export function threadFootprint(a: StringPeg, b: StringPeg, mapSize: number): Th
       const px = steep ? low + offset : x
       const py = steep ? x : low + offset
       if (weight <= 0 || px < 0 || py < 0 || px >= mapSize || py >= mapSize) continue
-      indices.push(py * mapSize + px)
-      coverage.push(weight)
+      indices[count] = py * mapSize + px
+      coverage[count] = weight
+      count++
     }
   }
-  return { indices: new Int32Array(indices), coverage: new Float32Array(coverage) }
+  return { indices: indices.slice(0, count), coverage: coverage.slice(0, count) }
+}
+
+interface RingGeometryEntry {
+  key: string
+  mapSize: number
+  pegCount: number
+  pegs: StringPeg[]
+  footprints: Array<ThreadFootprint | undefined>
+  dists: Float64Array
+}
+
+const MAX_RING_GEOMETRY_CACHE = 4
+const ringGeometryCache = new Map<string, RingGeometryEntry>()
+
+function ringPairIndex(pegCount: number, a: number, b: number): number {
+  const lo = a < b ? a : b
+  const hi = a < b ? b : a
+  return (lo * (2 * pegCount - lo - 1)) / 2 + (hi - lo - 1)
+}
+
+function pegsMatch(a: readonly StringPeg[], b: readonly StringPeg[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].x !== b[i].x || a[i].y !== b[i].y) return false
+  }
+  return true
+}
+
+function getRingGeometry(mapSize: number, pegCount: number, pegs: readonly StringPeg[]): RingGeometryEntry | null {
+  const key = `${mapSize}:${pegCount}`
+  let entry = ringGeometryCache.get(key)
+  if (entry) {
+    if (!pegsMatch(entry.pegs, pegs)) return null
+    // Refresh LRU order
+    ringGeometryCache.delete(key)
+    ringGeometryCache.set(key, entry)
+    return entry
+  }
+  const canonical = pegCoordinates(pegCount, mapSize)
+  if (!pegsMatch(canonical, pegs)) return null
+
+  const totalPairs = Math.max(1, (pegCount * (pegCount - 1)) / 2)
+  const dists = new Float64Array(totalPairs)
+  for (let a = 0; a < pegCount; a++) {
+    const ax = canonical[a].x
+    const ay = canonical[a].y
+    const rowBase = (a * (2 * pegCount - a - 1)) / 2 - a - 1
+    for (let b = a + 1; b < pegCount; b++) {
+      dists[rowBase + b] = Math.hypot(canonical[b].x - ax, canonical[b].y - ay)
+    }
+  }
+
+  entry = {
+    key,
+    mapSize,
+    pegCount,
+    pegs: canonical,
+    footprints: new Array<ThreadFootprint | undefined>(totalPairs),
+    dists,
+  }
+  if (ringGeometryCache.size >= MAX_RING_GEOMETRY_CACHE) {
+    const oldest = ringGeometryCache.keys().next().value
+    if (oldest !== undefined) ringGeometryCache.delete(oldest)
+  }
+  ringGeometryCache.set(key, entry)
+  return entry
+}
+
+function getCachedRingFootprint(entry: RingGeometryEntry, a: number, b: number): ThreadFootprint {
+  const idx = ringPairIndex(entry.pegCount, a, b)
+  return entry.footprints[idx] ??= threadFootprint(entry.pegs[a], entry.pegs[b], entry.mapSize)
 }
 
 export function applyThread(field: Float32Array, footprint: ThreadFootprint, darkness: number) {
@@ -840,13 +914,33 @@ export function threadGain(target: Float32Array, field: Float32Array, importance
   return gain
 }
 
+export function advanceStringArtCoverage(
+  plan: StringArtPlan,
+  fields: Float32Array[],
+  layerIndexMap: Map<number, number>,
+  fromStep: number,
+  toStep: number,
+) {
+  const start = Math.max(0, fromStep)
+  const end = Math.min(plan.steps.length, toStep)
+  if (start >= end) return
+  const ringEntry = plan.layoutMode === 'ring' ? getRingGeometry(plan.mapSize, plan.pegCount, plan.pegs) : null
+  for (let i = start; i < end; i++) {
+    const step = plan.steps[i]
+    const field = fields[layerIndexMap.get(step.layerIndex)!]
+    const a = step.from - 1
+    const b = step.to - 1
+    const footprint = ringEntry
+      ? getCachedRingFootprint(ringEntry, a, b)
+      : threadFootprint(plan.pegs[a], plan.pegs[b], plan.mapSize)
+    applyThread(field, footprint, plan.threadDarkness)
+  }
+}
+
 export function stringArtCoverage(plan: StringArtPlan, drawnCount = plan.steps.length): Float32Array[] {
   const fields = plan.layers.map(() => new Float32Array(plan.mapSize * plan.mapSize))
   const layers = new Map(plan.layers.map((layer, index) => [layer.index, index]))
-  for (const step of plan.steps.slice(0, drawnCount)) {
-    const field = fields[layers.get(step.layerIndex)!]
-    applyThread(field, threadFootprint(plan.pegs[step.from - 1], plan.pegs[step.to - 1], plan.mapSize), plan.threadDarkness)
-  }
+  advanceStringArtCoverage(plan, fields, layers, 0, drawnCount)
   return fields
 }
 
@@ -1070,7 +1164,7 @@ function normalizeLayersInput(
   }]
 }
 
-export function generateStringArt(
+function createStringArtSolver(
   input: Float32Array | StringLayerInput[],
   mapSize = DEFAULT_STRING_MAP_SIZE,
   pegCount = 200,
@@ -1079,7 +1173,7 @@ export function generateStringArt(
   layoutMode: NailLayoutMode = 'ring',
   palette: StringPalette = STRING_PALETTES[0],
   threadDarkness = DEFAULT_THREAD_DARKNESS,
-): StringArtPlan {
+): { advance: (maxWeaveSteps: number) => boolean; finish: () => StringArtPlan } {
   const safePegsRequested = Math.max(12, Math.min(280, Math.round(pegCount)))
   const safeSteps = Math.max(layoutMode === 'contour' ? 0 : 10, Math.min(4500, Math.round(stepCount)))
   const safeBoardCm = Math.max(10, Math.min(60, boardSizeCm))
@@ -1096,17 +1190,16 @@ export function generateStringArt(
 
   const actualPegCount = pegs.length
   const totalPairs = Math.max(1, (actualPegCount * (actualPegCount - 1)) / 2)
-  const chordCache = new Array<Int32Array | null>(contourBuild ? totalPairs * 2 : totalPairs).fill(null)
-  const pairIndex = (a: number, b: number) => {
-    const lo = a < b ? a : b
-    const hi = a < b ? b : a
-    return (lo * (2 * actualPegCount - lo - 1)) / 2 + (hi - lo - 1)
-  }
+  const isRing = layoutMode === 'ring'
+  const ringEntry = isRing ? getRingGeometry(mapSize, actualPegCount, pegs) : null
+  const chordCache = contourBuild ? new Array<Int32Array | null>(totalPairs * 2).fill(null) : null
+  const pairIndex = (a: number, b: number) => ringPairIndex(actualPegCount, a, b)
   // Bresenham tie pixels can differ in reverse. Contour validation must cache
   // each directed path, not accidentally reuse the opposite winding direction.
   const directedPairIndex = (a: number, b: number) => pairIndex(a, b) * 2 + (a > b ? 1 : 0)
   const getChord = (a: number, b: number) => {
     if (a === b) return new Int32Array(0)
+    if (!chordCache) return bresenhamLine(pegs[a].x, pegs[a].y, pegs[b].x, pegs[b].y, mapSize)
     const idx = contourBuild ? directedPairIndex(a, b) : pairIndex(a, b)
     let cached = chordCache[idx]
     if (!cached) {
@@ -1116,10 +1209,11 @@ export function generateStringArt(
     return cached
   }
 
-  const footprintCache = new Array<ThreadFootprint | undefined>(totalPairs)
+  const localFootprintCache = ringEntry ? null : new Array<ThreadFootprint | undefined>(totalPairs)
   const getFootprint = (a: number, b: number) => {
+    if (ringEntry) return getCachedRingFootprint(ringEntry, a, b)
     const index = pairIndex(a, b)
-    return footprintCache[index] ??= threadFootprint(pegs[a], pegs[b], mapSize)
+    return localFootprintCache![index] ??= threadFootprint(pegs[a], pegs[b], mapSize)
   }
 
   const loopAdj: Array<Array<{ from: number; to: number }>> = layersInput.map(() => [])
@@ -1149,7 +1243,7 @@ export function generateStringArt(
       : Math.max(8, Math.round((energy / totalEnergy) * remainingSteps)),
   )
 
-  const usedGlobal = new Uint8Array(totalPairs)
+  const usedGlobal = isRing ? null : new Uint8Array(totalPairs)
   const sequence: number[] = []
   const steps: StringArtStep[] = []
   const layerSummaries: ThreadLayerSummary[] = []
@@ -1191,127 +1285,219 @@ export function generateStringArt(
     })
   }
 
-  for (let l = 0; l < layersInput.length; l++) {
-    const layer = layersInput[l]
-    const regionMask = layer.regionMask ?? layer.map
-    const importanceMap = layer.importance ?? computeImportanceMap(layer.map, mapSize)
-    const layerStartIdx = steps.length
-    const startCumCm = cumulativeCm
+  let l = 0
+  let layerActive = false
+  let layerStartIdx = 0
+  let startCumCm = 0
+  let importanceMap!: Float32Array
+  let ringUses: Uint8Array | null = null
+  let packed: Float32Array | null = null
+  let residual: Float32Array | null = null
+  let isInsideRegion: (from: number, to: number) => boolean = () => false
+  let current = 0
+  let previous = -1
+  let recentRing = new Int32Array(12).fill(-1)
+  let recentPos = 0
+  let recentCount = new Uint8Array(actualPegCount)
+  let markedLayerChange = false
+  let minPegSpan = 2
+  let subGroups: number[][] = []
+  let subBudgets: number[] = []
+  let gi = 0
+  let subgroupActive = false
+  let activePegs: number[] = []
+  let subBudget = 0
+  let w = 0
 
-    const coverage = new Float32Array(layer.map.length)
-    const ringUses = new Uint8Array(totalPairs)
-    const residual = new Float32Array(layer.map.length)
-    for (let i = 0; i < layer.map.length; i++) {
-      residual[i] = regionMask[i] > 0.15 ? Math.max(layer.map[i], 0.25) : -0.42
-    }
+  const ringDists = ringEntry?.dists ?? null
+  const halfWeight = lineFade * 0.5
 
-    const candidatePegs = contourBuild
-      ? Array.from(contourBuild.layerPegSets[l])
-      : pegs.map((_, i) => i)
+  const advance = (maxWeaveSteps: number): boolean => {
+    const stepLimit = maxWeaveSteps > 0 ? maxWeaveSteps : 1
+    let ran = 0
 
-    if (candidatePegs.length < 2) continue
+    while (l < layersInput.length) {
+      const layer = layersInput[l]
+      if (!layerActive) {
+        const regionMask = layer.regionMask ?? layer.map
+        importanceMap = layer.importance ?? computeImportanceMap(layer.map, mapSize)
+        layerStartIdx = steps.length
+        startCumCm = cumulativeCm
 
-    // Masks do not change during solving: validate every pixel once per layer
-    // and directed chord, then reuse that result for outlines, hops and weaving.
-    const chordValidity = contourBuild ? new Uint8Array(totalPairs * 2) : null
-    const isInsideRegion = (from: number, to: number) => {
-      if (from === to || !chordValidity) return false
-      const index = directedPairIndex(from, to)
-      if (!chordValidity[index]) {
-        const line = getChord(from, to)
-        chordValidity[index] = line.length > 0 && line.every(pixel => regionMask[pixel] > 0.15) ? 1 : 2
-      }
-      return chordValidity[index] === 1
-    }
-
-    let current = candidatePegs[0]
-    let previous = -1
-    const recentVisited: number[] = []
-    let markedLayerChange = false
-
-    if (contourBuild && contourBuild.layerLoops[l].length > 0) {
-      for (const loop of contourBuild.layerLoops[l]) {
-        if (steps.length >= safeSteps) break
-        current = loop[0]
-        for (let i = 0; i < loop.length && steps.length < safeSteps; i++) {
-          const fromIdx = loop[i]
-          const toIdx = loop[(i + 1) % loop.length]
-          // Skip unsafe edges; recordStep marks the next disconnected start.
-          if (!isInsideRegion(fromIdx, toIdx)) continue
-          usedGlobal[pairIndex(fromIdx, toIdx)] = 1
-          const line = getChord(fromIdx, toIdx)
-          for (let p = 0; p < line.length; p++) {
-            residual[line[p]] = Math.max(-0.35, residual[line[p]] - lineFade * 0.65)
+        ringUses = isRing ? new Uint8Array(totalPairs) : null
+        packed = null
+        residual = null
+        if (isRing) {
+          const len = layer.map.length
+          packed = new Float32Array(len * 4)
+          for (let i = 0; i < len; i++) {
+            const base = i << 2
+            packed[base + 1] = layer.map[i]
+            packed[base + 2] = importanceMap[i]
           }
-          recordStep(fromIdx, toIdx, l, '轮廓锁边', !markedLayerChange)
-          markedLayerChange = true
-          previous = fromIdx
-          current = toIdx
+        } else {
+          residual = new Float32Array(layer.map.length)
+          for (let i = 0; i < layer.map.length; i++) {
+            residual[i] = regionMask[i] > 0.15 ? Math.max(layer.map[i], 0.25) : -0.42
+          }
         }
-      }
-    }
 
-    const targetWeaveSteps = Math.max(0, Math.min(weaveBudgets[l], safeSteps - steps.length))
-    const minPegSpan = layoutMode === 'ring' ? Math.max(8, Math.floor(actualPegCount * 0.075)) : 2
+        const candidatePegs = contourBuild
+          ? Array.from(contourBuild.layerPegSets[l])
+          : pegs.map((_, i) => i)
 
-    const subGroups = contourBuild && contourBuild.layerLoops[l].length > 1
-      ? contourBuild.layerLoops[l].map(loop => Array.from(new Set(loop)))
-      : [candidatePegs]
-    const totalGroupSize = subGroups.reduce((s, g) => s + g.length, 0) || 1
-    let allocatedWeave = 0
-    const subBudgets = subGroups.map((g, gi) => {
-      if (gi === subGroups.length - 1) return Math.max(0, targetWeaveSteps - allocatedWeave)
-      const part = Math.max(4, Math.round((g.length / totalGroupSize) * targetWeaveSteps))
-      allocatedWeave += part
-      return part
-    })
+        if (candidatePegs.length < 2) {
+          l++
+          continue
+        }
 
-    for (let gi = 0; gi < subGroups.length && steps.length < safeSteps; gi++) {
-      const activePegs = subGroups[gi]
-      if (activePegs.length < 3) continue
-      const subBudget = Math.min(subBudgets[gi], safeSteps - steps.length)
-      if (!activePegs.includes(current)) {
-        current = activePegs[0]
+        // Masks do not change during solving: validate every pixel once per layer
+        // and directed chord, then reuse that result for outlines, hops and weaving.
+        const chordValidity = contourBuild ? new Uint8Array(totalPairs * 2) : null
+        isInsideRegion = (from: number, to: number) => {
+          if (from === to || !chordValidity) return false
+          const index = directedPairIndex(from, to)
+          if (!chordValidity[index]) {
+            const line = getChord(from, to)
+            chordValidity[index] = line.length > 0 && line.every(pixel => regionMask[pixel] > 0.15) ? 1 : 2
+          }
+          return chordValidity[index] === 1
+        }
+
+        current = candidatePegs[0]
         previous = -1
+        recentRing = new Int32Array(12).fill(-1)
+        recentPos = 0
+        recentCount = new Uint8Array(actualPegCount)
+        markedLayerChange = false
+
+        if (contourBuild && contourBuild.layerLoops[l].length > 0 && residual) {
+          for (const loop of contourBuild.layerLoops[l]) {
+            if (steps.length >= safeSteps) break
+            current = loop[0]
+            for (let i = 0; i < loop.length && steps.length < safeSteps; i++) {
+              const fromIdx = loop[i]
+              const toIdx = loop[(i + 1) % loop.length]
+              // Skip unsafe edges; recordStep marks the next disconnected start.
+              if (!isInsideRegion(fromIdx, toIdx)) continue
+              usedGlobal![pairIndex(fromIdx, toIdx)] = 1
+              const line = getChord(fromIdx, toIdx)
+              for (let p = 0; p < line.length; p++) {
+                residual[line[p]] = Math.max(-0.35, residual[line[p]] - lineFade * 0.65)
+              }
+              recordStep(fromIdx, toIdx, l, '轮廓锁边', !markedLayerChange)
+              markedLayerChange = true
+              previous = fromIdx
+              current = toIdx
+            }
+          }
+        }
+
+        const targetWeaveSteps = Math.max(0, Math.min(weaveBudgets[l], safeSteps - steps.length))
+        minPegSpan = isRing ? Math.max(8, Math.floor(actualPegCount * 0.075)) : 2
+
+        subGroups = contourBuild && contourBuild.layerLoops[l].length > 1
+          ? contourBuild.layerLoops[l].map(loop => Array.from(new Set(loop)))
+          : [candidatePegs]
+        const totalGroupSize = subGroups.reduce((s, g) => s + g.length, 0) || 1
+        let allocatedWeave = 0
+        subBudgets = subGroups.map((g, giIdx) => {
+          if (giIdx === subGroups.length - 1) return Math.max(0, targetWeaveSteps - allocatedWeave)
+          const part = Math.max(4, Math.round((g.length / totalGroupSize) * targetWeaveSteps))
+          allocatedWeave += part
+          return part
+        })
+        gi = 0
+        subgroupActive = false
+        layerActive = true
       }
 
-      for (let w = 0; w < subBudget && steps.length < safeSteps; w++) {
+      while (gi < subGroups.length && steps.length < safeSteps) {
+        if (!subgroupActive) {
+          const nextPegs = subGroups[gi]
+          if (nextPegs.length < 3) {
+            gi++
+            continue
+          }
+          activePegs = nextPegs
+          subBudget = Math.min(subBudgets[gi], safeSteps - steps.length)
+          if (!activePegs.includes(current)) {
+            current = activePegs[0]
+            previous = -1
+          }
+          w = 0
+          subgroupActive = true
+        }
+
+        // Bind hot arrays/scalars locally so tight loops stay register-resident.
+        const aPegs = activePegs
+        const sBudget = subBudget
+        const pck = packed
+        const rUses = ringUses
+        const res = residual
+        const impMap = importanceMap
+        const rRing = recentRing
+        const rCount = recentCount
+        const pegCountVal = actualPegCount
+        const mSpan = minPegSpan
+        let cur = current
+        let prev = previous
+        let rPos = recentPos
+        let iter = w
+        let marked = markedLayerChange
+
         const pickChord = (allowUsed: boolean) => {
           let bestNext = -1
           let bestScore = -Infinity
           let bestLine: Int32Array | null = null
-          const halfWeight = lineFade * 0.5
 
-          for (let ci = 0; ci < activePegs.length; ci++) {
-            const cand = activePegs[ci]
-            if (cand === current || cand === previous) continue
-            if (layoutMode === 'ring') {
-              const diff = Math.abs(cand - current)
-              if (Math.min(diff, actualPegCount - diff) < minPegSpan) continue
-              if (!allowUsed && recentVisited.includes(cand)) continue
-            } else {
-              const distPx = Math.hypot(pegs[cand].x - pegs[current].x, pegs[cand].y - pegs[current].y)
-              if (distPx < 6) continue
-            }
-            if (layoutMode === 'ring') {
-              if (ringUses[pairIndex(current, cand)] >= 3) continue
-            } else if (!allowUsed && usedGlobal[pairIndex(current, cand)] > 0) continue
+          if (isRing && pck && rUses) {
+            const curX = pegs[cur].x
+            const curY = pegs[cur].y
 
-            if (layoutMode === 'ring') {
-              const footprint = getFootprint(current, cand)
-              const score = threadGain(layer.map, coverage, importanceMap, footprint, threadDarkness) / Math.hypot(pegs[cand].x - pegs[current].x, pegs[cand].y - pegs[current].y)
+            for (let ci = 0; ci < aPegs.length; ci++) {
+              const cand = aPegs[ci]
+              if (cand === cur || cand === prev) continue
+              const diff = Math.abs(cand - cur)
+              if ((diff < pegCountVal - diff ? diff : pegCountVal - diff) < mSpan) continue
+              if (!allowUsed && rCount[cand] > 0) continue
+              const pIdx = pairIndex(cur, cand)
+              if (rUses[pIdx] >= 3) continue
+
+              const footprint = getFootprint(cur, cand)
+              const fIdx = footprint.indices
+              const fCov = footprint.coverage
+              let gain = 0
+              for (let k = 0; k < fIdx.length; k++) {
+                const base = fIdx[k] << 2
+                const f = pck[base]
+                if (f >= 1) continue
+                const rem = 1 - f
+                const dc = threadDarkness * fCov[k]
+                const delta = dc < rem ? dc : rem
+                gain += pck[base + 2] * delta * (2 * (pck[base + 1] - f) - delta)
+              }
+              const dist = ringDists ? ringDists[pIdx] : Math.hypot(pegs[cand].x - curX, pegs[cand].y - curY)
+              const score = gain / dist
               if (score > bestScore) { bestScore = score; bestNext = cand }
-              continue
             }
+            return { bestNext, bestLine, bestScore }
+          }
 
-            if (!isInsideRegion(current, cand)) continue
-            const line = getChord(current, cand)
+          for (let ci = 0; ci < aPegs.length; ci++) {
+            const cand = aPegs[ci]
+            if (cand === cur || cand === prev) continue
+            const distPx = Math.hypot(pegs[cand].x - pegs[cur].x, pegs[cand].y - pegs[cur].y)
+            if (distPx < 6) continue
+            if (!allowUsed && usedGlobal![pairIndex(cur, cand)] > 0) continue
+            if (!isInsideRegion(cur, cand)) continue
+            const line = getChord(cur, cand)
             if (line.length < 3) continue
 
             let sum = 0
             for (let k = 0; k < line.length; k++) {
               const idxPx = line[k]
-              sum += importanceMap[idxPx] * (residual[idxPx] - halfWeight)
+              sum += impMap[idxPx] * (res![idxPx] - halfWeight)
             }
 
             const score = sum / Math.pow(line.length, 0.85)
@@ -1324,85 +1510,189 @@ export function generateStringArt(
           return { bestNext, bestLine, bestScore }
         }
 
-        let found = pickChord(false)
+        while (iter < sBudget && steps.length < safeSteps) {
+          if (ran >= stepLimit) {
+            current = cur
+            previous = prev
+            recentPos = rPos
+            w = iter
+            markedLayerChange = marked
+            return false
+          }
 
-        if (layoutMode === 'ring' && (found.bestNext < 0 || found.bestScore <= 0)) break
+          let found = pickChord(false)
 
-        if (found.bestNext < 0) {
-          if (contourBuild) {
-            const hop = loopAdj[l].find(edge => edge.from === current && edge.to !== previous
-              && activePegs.includes(edge.to) && isInsideRegion(edge.from, edge.to))
-            if (hop) {
-              const hopLine = getChord(hop.from, hop.to)
-              recordStep(hop.from, hop.to, l, '轮廓锁边', !markedLayerChange)
-              markedLayerChange = true
-              for (let p = 0; p < hopLine.length; p++) {
-                residual[hopLine[p]] = Math.max(-0.35, residual[hopLine[p]] - lineFade * 0.4)
+          if (isRing && (found.bestNext < 0 || found.bestScore <= 0)) break
+
+          if (found.bestNext < 0) {
+            if (contourBuild && res) {
+              const hop = loopAdj[l].find(edge => edge.from === cur && edge.to !== prev
+                && aPegs.includes(edge.to) && isInsideRegion(edge.from, edge.to))
+              if (hop) {
+                const hopLine = getChord(hop.from, hop.to)
+                recordStep(hop.from, hop.to, l, '轮廓锁边', !marked)
+                marked = true
+                for (let p = 0; p < hopLine.length; p++) {
+                  res[hopLine[p]] = Math.max(-0.35, res[hopLine[p]] - lineFade * 0.4)
+                }
+                prev = hop.from
+                cur = hop.to
+                iter++
+                ran++
+                continue
               }
-              previous = hop.from
-              current = hop.to
-              continue
+            }
+            found = pickChord(true)
+          }
+          // The budget is a ceiling, not a reason to bridge holes or white space.
+          // Stop this group if no legal continuation exists; later groups restart.
+          if (found.bestNext < 0) break
+
+          if (isRing && pck && rUses) {
+            const pIdx = pairIndex(cur, found.bestNext)
+            rUses[pIdx]++
+            const footprint = getFootprint(cur, found.bestNext)
+            const fIdx = footprint.indices
+            const fCov = footprint.coverage
+            for (let k = 0; k < fIdx.length; k++) {
+              const base = fIdx[k] << 2
+              const next = pck[base] + threadDarkness * fCov[k]
+              pck[base] = next < 1 ? next : 1
+            }
+          } else if (res) {
+            if (!found.bestLine) found.bestLine = getChord(cur, found.bestNext)
+            usedGlobal![pairIndex(cur, found.bestNext)] = 1
+            for (let k = 0; k < found.bestLine.length; k++) {
+              const p = found.bestLine[k]
+              res[p] = Math.max(-0.35, res[p] - lineFade)
             }
           }
-          found = pickChord(true)
-        }
-        // The budget is a ceiling, not a reason to bridge holes or white space.
-        // Stop this group if no legal continuation exists; later groups restart.
-        if (found.bestNext < 0) break
-        if (!found.bestLine) found.bestLine = getChord(current, found.bestNext)
 
-        usedGlobal[pairIndex(current, found.bestNext)] = 1
-        if (layoutMode === 'ring') {
-          ringUses[pairIndex(current, found.bestNext)]++
-          applyThread(coverage, getFootprint(current, found.bestNext), threadDarkness)
-        } else {
-          for (let k = 0; k < found.bestLine.length; k++) {
-            const p = found.bestLine[k]
-            residual[p] = Math.max(-0.35, residual[p] - lineFade)
-          }
+          recordStep(cur, found.bestNext, l, isRing ? '光影走线' : '内部混绕', !marked)
+          marked = true
+          const evicted = rRing[rPos]
+          if (evicted >= 0) rCount[evicted]--
+          rRing[rPos] = cur
+          rCount[cur]++
+          rPos = (rPos + 1) % 12
+          prev = cur
+          cur = found.bestNext
+          iter++
+          ran++
         }
 
-        recordStep(current, found.bestNext, l, layoutMode === 'ring' ? '光影走线' : '内部混绕', !markedLayerChange)
-        markedLayerChange = true
-        recentVisited.push(current)
-        if (recentVisited.length > 12) recentVisited.shift()
-        previous = current
-        current = found.bestNext
+        current = cur
+        previous = prev
+        recentPos = rPos
+        w = iter
+        markedLayerChange = marked
+        subgroupActive = false
+        gi++
       }
-    }
 
-    if (steps.length > layerStartIdx) {
-      layerSummaries.push({
-        index: l,
-        name: layer.name,
-        color: layer.color,
-        startStep: layerStartIdx + 1,
-        endStep: steps.length,
-        stepCount: steps.length - layerStartIdx,
-        lengthMeters: Number(((cumulativeCm - startCumCm) / 100).toFixed(2)),
-      })
+      if (steps.length > layerStartIdx) {
+        layerSummaries.push({
+          index: l,
+          name: layer.name,
+          color: layer.color,
+          startStep: layerStartIdx + 1,
+          endStep: steps.length,
+          stepCount: steps.length - layerStartIdx,
+          lengthMeters: Number(((cumulativeCm - startCumCm) / 100).toFixed(2)),
+        })
+      }
+      layerActive = false
+      l++
+    }
+    return true
+  }
+
+  const finish = (): StringArtPlan => {
+    const contourLoops = contourBuild
+      ? contourBuild.layerLoops.flat().map(loop => loop.map(idx => pegs[idx].number))
+      : []
+
+    return {
+      mapSize,
+      threadDarkness,
+      pegCount: actualPegCount,
+      stepCount: steps.length,
+      boardSizeCm: safeBoardCm,
+      pegRadiusCm,
+      layoutMode,
+      pegs,
+      sequence,
+      steps,
+      layers: layerSummaries,
+      contourLoops,
+      totalLengthMeters: Number((cumulativeCm / 100).toFixed(2)),
     }
   }
 
-  const contourLoops = contourBuild
-    ? contourBuild.layerLoops.flat().map(loop => loop.map(idx => pegs[idx].number))
-    : []
+  return { advance, finish }
+}
 
-  return {
+export interface GenerateStringArtAsyncOptions {
+  shouldAbort?: () => boolean
+  chunkSteps?: number
+  yieldChunk?: () => Promise<void>
+}
+
+export async function generateStringArtAsync(
+  input: Float32Array | StringLayerInput[],
+  mapSize = DEFAULT_STRING_MAP_SIZE,
+  pegCount = 200,
+  stepCount = 2000,
+  boardSizeCm = 20,
+  layoutMode: NailLayoutMode = 'ring',
+  palette: StringPalette = STRING_PALETTES[0],
+  threadDarkness = DEFAULT_THREAD_DARKNESS,
+  options: GenerateStringArtAsyncOptions = {},
+): Promise<StringArtPlan | null> {
+  const { shouldAbort, chunkSteps = 32, yieldChunk } = options
+  if (shouldAbort?.()) return null
+  const solver = createStringArtSolver(
+    input,
     mapSize,
-    threadDarkness,
-    pegCount: actualPegCount,
-    stepCount: steps.length,
-    boardSizeCm: safeBoardCm,
-    pegRadiusCm,
+    pegCount,
+    stepCount,
+    boardSizeCm,
     layoutMode,
-    pegs,
-    sequence,
-    steps,
-    layers: layerSummaries,
-    contourLoops,
-    totalLengthMeters: Number((cumulativeCm / 100).toFixed(2)),
+    palette,
+    threadDarkness,
+  )
+  const stepBudget = Math.max(1, Math.round(chunkSteps))
+  const yielder = yieldChunk ?? (() => new Promise<void>(resolve => setTimeout(resolve, 0)))
+  while (!solver.advance(stepBudget)) {
+    if (shouldAbort?.()) return null
+    await yielder()
+    if (shouldAbort?.()) return null
   }
+  return shouldAbort?.() ? null : solver.finish()
+}
+
+export function generateStringArt(
+  input: Float32Array | StringLayerInput[],
+  mapSize = DEFAULT_STRING_MAP_SIZE,
+  pegCount = 200,
+  stepCount = 2000,
+  boardSizeCm = 20,
+  layoutMode: NailLayoutMode = 'ring',
+  palette: StringPalette = STRING_PALETTES[0],
+  threadDarkness = DEFAULT_THREAD_DARKNESS,
+): StringArtPlan {
+  const solver = createStringArtSolver(
+    input,
+    mapSize,
+    pegCount,
+    stepCount,
+    boardSizeCm,
+    layoutMode,
+    palette,
+    threadDarkness,
+  )
+  while (!solver.advance(Infinity)) {}
+  return solver.finish()
 }
 
 function escapeXml(value: string) {

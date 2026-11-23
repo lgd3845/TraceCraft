@@ -3,6 +3,7 @@ import {
   decodeLocalImage,
   DEFAULT_PHOTO_FRAMING,
   photoCropRect,
+  readCroppedImageRgba,
   renderPhotoFraming,
   sourcePreview,
 } from '../wire-craft/stringArtCanvas'
@@ -20,6 +21,7 @@ export {
   decodeLocalImage,
   DEFAULT_PHOTO_FRAMING,
   photoCropRect,
+  readCroppedImageRgba,
   renderPhotoFraming,
   sourcePreview,
 }
@@ -56,6 +58,31 @@ export function sampleImageToCarvingField(
   ctx.drawImage(image, sx, sy, side, side, 0, 0, gridSize, gridSize)
   const rgba = ctx.getImageData(0, 0, gridSize, gridSize).data
   return rgbaToCarvingField(rgba, gridSize, gridSize, gridSize, invert, contrastMode, mirrorPrint)
+}
+
+const vectorLayerCache = new WeakMap<CarvingPlan, Map<string, HTMLCanvasElement>>()
+
+function getCachedVectorLayerCanvas(
+  plan: CarvingPlan,
+  cacheKey: string,
+  steps: CarvingPlan['steps'],
+  artSizePx: number,
+  fillHex: string,
+  highlightRim = false,
+): HTMLCanvasElement {
+  const size = Math.max(8, Math.round(artSizePx))
+  const fullKey = `${cacheKey}|${size}|${fillHex}|${highlightRim ? 1 : 0}`
+  let byKey = vectorLayerCache.get(plan)
+  if (!byKey) {
+    byKey = new Map()
+    vectorLayerCache.set(plan, byKey)
+  }
+  let cached = byKey.get(fullKey)
+  if (!cached) {
+    cached = createVectorLayerCanvas(steps, size, fillHex, highlightRim)
+    byKey.set(fullKey, cached)
+  }
+  return cached
 }
 
 function createVectorLayerCanvas(
@@ -183,7 +210,7 @@ export function drawCarvingScene(
       // Render back-to-front so frontmost L1 sits atop L2..L4 with crisp vector shadows
       for (let idx = plan.layers.length - 1; idx >= 0; idx--) {
         const layerSteps = plan.steps.filter(s => s.layerIndex === idx)
-        const layerCanvas = createVectorLayerCanvas(layerSteps, artSize, layerShades[idx] ?? material.paper, true)
+        const layerCanvas = getCachedVectorLayerCanvas(plan, `layer:${idx}`, layerSteps, artSize, layerShades[idx] ?? material.paper, true)
         ctx.save()
         ctx.globalAlpha = material.isLightbox ? 1 : idx === 0 ? 1 : 0.72
         ctx.shadowColor = material.shadow
@@ -206,7 +233,7 @@ export function drawCarvingScene(
           ctx.stroke()
         }
       }
-      const layerCanvas = createVectorLayerCanvas(plan.steps, artSize, material.paper, !material.isLightbox)
+      const layerCanvas = getCachedVectorLayerCanvas(plan, 'single', plan.steps, artSize, material.paper, !material.isLightbox)
       ctx.save()
       ctx.shadowColor = material.shadow
       ctx.shadowBlur = 9 * scale

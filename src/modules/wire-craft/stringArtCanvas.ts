@@ -1,5 +1,6 @@
 import { canvasPngBlob, decodeLocalImage, sourcePreview } from '../beads/beadsCanvas'
 import {
+  advanceStringArtCoverage,
   DEFAULT_STRING_MAP_SIZE,
   padPeg,
   rgbaToDarknessMap,
@@ -55,7 +56,7 @@ export function renderPhotoFraming(canvas: HTMLCanvasElement, image: HTMLImageEl
   ctx.stroke()
 }
 
-function readCroppedImageRgba(image: HTMLImageElement, mapSize: number, framing = DEFAULT_PHOTO_FRAMING): Uint8ClampedArray {
+export function readCroppedImageRgba(image: HTMLImageElement, mapSize: number, framing = DEFAULT_PHOTO_FRAMING): Uint8ClampedArray {
   const { sx, sy, side } = photoCropRect(image.naturalWidth, image.naturalHeight, framing)
   const offscreen = document.createElement('canvas')
   const ctx = getContext(offscreen, mapSize, mapSize)
@@ -94,25 +95,77 @@ function pegPoint(plan: StringArtPlan, pegNumber: number, cx: number, cy: number
   return { x: cx + peg.nx * pegR, y: cy + peg.ny * pegR, nx: peg.nx, ny: peg.ny, color: peg.color }
 }
 
+interface RingRenderCache {
+  drawnCount: number
+  rasterDrawnCount: number
+  fields: Float32Array[]
+  layerIndexMap: Map<number, number>
+  raster: HTMLCanvasElement
+  rasterCtx: CanvasRenderingContext2D
+  imageData: ImageData
+}
+
+const ringRenderCache = new WeakMap<StringArtPlan, RingRenderCache>()
+
+function getRingRenderCache(plan: StringArtPlan, drawnCount: number): RingRenderCache | null {
+  let cache = ringRenderCache.get(plan)
+  if (!cache) {
+    const raster = document.createElement('canvas')
+    const rasterCtx = getContext(raster, plan.mapSize, plan.mapSize)
+    if (typeof rasterCtx.createImageData !== 'function') return null
+    cache = {
+      drawnCount: 0,
+      rasterDrawnCount: -1,
+      fields: plan.layers.map(() => new Float32Array(plan.mapSize * plan.mapSize)),
+      layerIndexMap: new Map(plan.layers.map((layer, index) => [layer.index, index])),
+      raster,
+      rasterCtx,
+      imageData: rasterCtx.createImageData(plan.mapSize, plan.mapSize),
+    }
+    ringRenderCache.set(plan, cache)
+  }
+  if (drawnCount < cache.drawnCount) {
+    for (const field of cache.fields) field.fill(0)
+    advanceStringArtCoverage(plan, cache.fields, cache.layerIndexMap, 0, drawnCount)
+    cache.drawnCount = drawnCount
+    cache.rasterDrawnCount = -1
+  } else if (drawnCount > cache.drawnCount) {
+    advanceStringArtCoverage(plan, cache.fields, cache.layerIndexMap, cache.drawnCount, drawnCount)
+    cache.drawnCount = drawnCount
+    cache.rasterDrawnCount = -1
+  }
+  return cache
+}
+
 function drawOptimizedThreads(ctx: CanvasRenderingContext2D, cx: number, cy: number, pegR: number, plan: StringArtPlan, drawnCount: number) {
-  const fields = stringArtCoverage(plan, drawnCount)
-  const raster = document.createElement('canvas')
-  const rasterContext = getContext(raster, plan.mapSize, plan.mapSize)
+  const cache = getRingRenderCache(plan, drawnCount)
+  const fields = cache ? cache.fields : stringArtCoverage(plan, drawnCount)
+  const raster = cache ? cache.raster : document.createElement('canvas')
+  const rasterContext = cache ? cache.rasterCtx : getContext(raster, plan.mapSize, plan.mapSize)
+  const image = cache ? cache.imageData : rasterContext.createImageData(plan.mapSize, plan.mapSize)
   const pixelScale = pegR / (plan.mapSize / 2 - 4)
   const offset = plan.mapSize / 2 * pixelScale
   ctx.save()
   ctx.imageSmoothingEnabled = true
+  const singleLayerReuse = Boolean(cache && fields.length === 1 && cache.rasterDrawnCount === drawnCount)
   for (let layer = 0; layer < fields.length; layer++) {
-    const rgb = plan.layers[layer].color.match(/[\da-f]{2}/gi)!.map(value => parseInt(value, 16))
-    const image = rasterContext.createImageData(plan.mapSize, plan.mapSize)
-    for (let i = 0; i < fields[layer].length; i++) {
-      image.data[i * 4] = rgb[0]
-      image.data[i * 4 + 1] = rgb[1]
-      image.data[i * 4 + 2] = rgb[2]
-      image.data[i * 4 + 3] = Math.round(fields[layer][i] * 255)
+    if (!singleLayerReuse) {
+      const rgb = plan.layers[layer].color.match(/[\da-f]{2}/gi)!.map(value => parseInt(value, 16))
+      const data = image.data
+      const field = fields[layer]
+      for (let i = 0; i < field.length; i++) {
+        const p = i * 4
+        data[p] = rgb[0]
+        data[p + 1] = rgb[1]
+        data[p + 2] = rgb[2]
+        data[p + 3] = Math.round(field[i] * 255)
+      }
+      rasterContext.putImageData(image, 0, 0)
     }
-    rasterContext.putImageData(image, 0, 0)
     ctx.drawImage(raster, cx - offset, cy - offset, plan.mapSize * pixelScale, plan.mapSize * pixelScale)
+  }
+  if (cache && fields.length === 1) {
+    cache.rasterDrawnCount = drawnCount
   }
   ctx.restore()
 }
