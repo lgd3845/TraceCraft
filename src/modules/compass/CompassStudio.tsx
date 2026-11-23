@@ -22,6 +22,7 @@ import ExportArtworkModal from '../../components/ExportArtworkModal'
 import SaveArtworkModal from '../../components/SaveArtworkModal'
 import { canvasThumbnailDataUrl, compressImageForStorage, loadImageFromDataUrl } from '../../lib/artworkImage'
 import { downloadFile } from '../../lib/export'
+import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
 import { readStepProgress, writeStepProgress } from '../../lib/storage'
 import { useStudio } from '../../lib/studio'
 import type { CompassArtworkData } from '../../lib/types'
@@ -31,9 +32,7 @@ import {
   COMPASS_EXAMPLES,
   COMPASS_PALETTES,
   compassStepsCsv,
-  createCompassExampleField,
   DEFAULT_COMPASS_MAP_SIZE,
-  generateCompassPlan,
   padRing,
   PAPER_SIZES_CM,
   RING_COUNTS,
@@ -44,6 +43,8 @@ import type {
   CompassColorMode,
   CompassContrastMode,
   CompassExampleId,
+  CompassPalette,
+  CompassPlan,
   PaperSizeCm,
   RingCount,
 } from './compass'
@@ -52,13 +53,37 @@ import {
   compassSheetCanvas,
   decodeLocalImage,
   DEFAULT_PHOTO_FRAMING,
+  readCroppedImageRgba,
   renderCompassBoard,
   renderPhotoFraming,
-  sampleImageToCompassField,
   sourcePreview,
 } from './compassCanvas'
 import type { PhotoFraming } from './compassCanvas'
+import type { CompassWorkerRequest } from './compass.worker'
 import './compass.css'
+
+function emptyCompassPlan(
+  algorithm: CompassAlgorithm,
+  ringCount: number,
+  paperSizeCm: PaperSizeCm,
+  colorMode: CompassColorMode,
+  contrastMode: CompassContrastMode,
+): CompassPlan {
+  return {
+    algorithm,
+    colorMode,
+    contrastMode,
+    mapSize: DEFAULT_COMPASS_MAP_SIZE,
+    ringCount,
+    paperSizeCm,
+    maxRadiusMm: Number(((paperSizeCm * 10) * 0.43).toFixed(1)),
+    ringSpacingNorm: 1 / ringCount,
+    centers: [{ id: 'O', label: '中心圆心 O', nx: 0, ny: 0, xMm: 0, yMm: 0 }],
+    steps: [],
+    layers: [],
+    totalLengthMeters: 0,
+  }
+}
 
 const PROGRESS_STORAGE_KEY = 'tracecraft.compass-art-progress.v1'
 
@@ -134,6 +159,7 @@ export default function CompassStudio() {
   const mounted = useRef(true)
   const requestId = useRef(0)
   const dragDepth = useRef(0)
+  const workerRunnerRef = useRef<PersistentWorkerRunner<CompassWorkerRequest, CompassPlan> | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const boardCanvas = useRef<HTMLCanvasElement>(null)
   const fullscreenCanvas = useRef<HTMLCanvasElement>(null)
@@ -150,62 +176,89 @@ export default function CompassStudio() {
     return `compass-v1|${id}|${framing.zoom}:${framing.x}:${framing.y}|${algorithm}|${colorMode}|${contrastMode}|${ringCount}|${paperSizeCm}|${paletteId}|${autoInvert ? 1 : 0}`
   }, [source, framing, algorithm, colorMode, contrastMode, ringCount, paperSizeCm, paletteId, usePhotoColors, autoInvert])
 
-  const field = useMemo(() => {
+  const sampledPhoto = useMemo(() => {
+    if (source.kind !== 'photo') {
+      return { source: null as CompassWorkerRequest['source'] | null, error: '' }
+    }
     try {
-      const base =
-        source.kind === 'example'
-          ? createCompassExampleField(source.id, DEFAULT_COMPASS_MAP_SIZE, palette, contrastMode)
-          : sampleImageToCompassField(
-              source.image,
-              DEFAULT_COMPASS_MAP_SIZE,
-              palette,
-              usePhotoColors,
-              autoInvert,
-              contrastMode,
-              framing,
-            )
-      return { value: base, error: '' }
+      const rgba = readCroppedImageRgba(source.image, DEFAULT_COMPASS_MAP_SIZE, framing)
+      if (!hasOpaquePixels(rgba, 16)) {
+        return {
+          source: null,
+          error: '这张图片全部透明，无法提取圆规画，请换一张主体清晰的图片。',
+        }
+      }
+      return {
+        source: {
+          kind: 'photo' as const,
+          rgba,
+          width: DEFAULT_COMPASS_MAP_SIZE,
+          height: DEFAULT_COMPASS_MAP_SIZE,
+          key: `ph:${source.uploadId}:${framing.zoom}:${framing.x}:${framing.y}`,
+        },
+        error: '',
+      }
     } catch (cause) {
       return {
-        value: null,
+        source: null,
         error: cause instanceof Error ? cause.message : '图片采样失败，请调整取景或更换照片。',
       }
     }
-  }, [source, palette, usePhotoColors, autoInvert, contrastMode, framing])
+  }, [source, framing])
 
-  const plan = useMemo(() => {
-    if (!field.value) {
-      return generateCompassPlan(
-        {
-          mapSize: DEFAULT_COMPASS_MAP_SIZE,
-          darkness: new Float32Array(DEFAULT_COMPASS_MAP_SIZE ** 2),
-          layerColors: palette.pens,
-          layerMaps: [
-            new Float32Array(DEFAULT_COMPASS_MAP_SIZE ** 2),
-            new Float32Array(DEFAULT_COMPASS_MAP_SIZE ** 2),
-            new Float32Array(DEFAULT_COMPASS_MAP_SIZE ** 2),
-          ],
-        },
-        algorithm,
-        ringCount,
-        paperSizeCm,
-        colorMode,
-        contrastMode,
-      )
+  const workerPayload = useMemo<CompassWorkerRequest | null>(() => {
+    const workerSource: CompassWorkerRequest['source'] | null =
+      source.kind === 'example' ? { kind: 'example', id: source.id } : sampledPhoto.source
+    if (!workerSource) return null
+    return {
+      source: workerSource,
+      mapSize: DEFAULT_COMPASS_MAP_SIZE,
+      algorithm,
+      ringCount,
+      paperSizeCm,
+      colorMode,
+      contrastMode,
+      palette,
+      usePhotoColors,
+      autoInvert,
     }
-    return generateCompassPlan(field.value, algorithm, ringCount, paperSizeCm, colorMode, contrastMode)
-  }, [field.value, algorithm, ringCount, paperSizeCm, colorMode, contrastMode, palette.pens])
+  }, [source, sampledPhoto.source, algorithm, ringCount, paperSizeCm, colorMode, contrastMode, palette, usePhotoColors, autoInvert])
 
+  const generationJob = useMemo(
+    () => ({ signature, payload: workerPayload }),
+    [signature, workerPayload],
+  )
+  const [result, setResult] = useState<{
+    job: typeof generationJob | null
+    plan: CompassPlan
+    palette: CompassPalette
+    title: string
+  }>(() => ({
+    job: null,
+    plan: emptyCompassPlan(algorithm, ringCount, paperSizeCm, colorMode, contrastMode),
+    palette,
+    title: '',
+  }))
+  const [generationFailure, setGenerationFailure] = useState<{ job: typeof generationJob; message: string } | null>(null)
+  const titleRef = useRef(title)
+  titleRef.current = title
+
+  const plan = result.plan
   const totalSteps = plan.steps.length
   const hasSteps = totalSteps > 0
+  const isPlanCurrent = result.job === generationJob
+  const displayTitle = isPlanCurrent ? title : result.title
+  const generationError = sampledPhoto.error || (generationFailure?.job === generationJob ? generationFailure.message : '')
   const currentStep = clampStep(requestedStep, totalSteps)
-  const canUsePlan = !busy && hasSteps && !field.error
+  const canUsePlan = isPlanCurrent && !busy && hasSteps && !generationError
 
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
       requestId.current++
+      workerRunnerRef.current?.dispose()
+      workerRunnerRef.current = null
     }
   }, [])
 
@@ -229,14 +282,44 @@ export default function CompassStudio() {
   }, [savedWork, editingArtwork?.id])
 
   useEffect(() => {
-    const saved = readSavedProgress(signature)
-    setCurrentStep(clampStep(saved ?? 1, totalSteps))
-    if (totalSteps === 0) setMode('full')
-  }, [signature, totalSteps])
+    if (!generationJob.payload) {
+      workerRunnerRef.current?.cancelCurrent()
+      return
+    }
+    if (typeof Worker === 'undefined') return
+    let cancelled = false
+    const submittedTitle = titleRef.current
+    const submittedPalette = generationJob.payload.palette
+    const runner = (workerRunnerRef.current ??= new PersistentWorkerRunner(
+      () => new Worker(new URL('./compass.worker.ts', import.meta.url), { type: 'module' }),
+    ))
+    runner.submit(generationJob.payload, {
+      onSuccess: nextPlan => {
+        if (cancelled || !mounted.current) return
+        const saved = readSavedProgress(generationJob.signature)
+        setCurrentStep(clampStep(saved ?? 1, nextPlan.steps.length))
+        if (nextPlan.steps.length === 0) setMode('full')
+        setResult({
+          job: generationJob,
+          plan: nextPlan,
+          palette: submittedPalette,
+          title: submittedTitle,
+        })
+        setGenerationFailure(null)
+      },
+      onError: message => {
+        if (cancelled || !mounted.current) return
+        setGenerationFailure({ job: generationJob, message })
+      },
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [generationJob])
 
   useEffect(() => {
-    writeSavedProgress(signature, currentStep)
-  }, [signature, currentStep])
+    if (isPlanCurrent) writeSavedProgress(signature, currentStep)
+  }, [isPlanCurrent, signature, currentStep])
 
   useEffect(() => {
     if (source.kind !== 'photo' || !photoFramingCanvas.current) return
@@ -249,9 +332,9 @@ export default function CompassStudio() {
   }, [source, framing])
 
   useEffect(() => {
-    if (!boardCanvas.current) return
+    if (fullscreenOpen || !boardCanvas.current) return
     try {
-      renderCompassBoard(boardCanvas.current, plan, palette, {
+      renderCompassBoard(boardCanvas.current, plan, result.palette, {
         mode,
         currentStep,
         showProtractor,
@@ -261,19 +344,19 @@ export default function CompassStudio() {
     } catch (cause) {
       setPreviewError(cause instanceof Error ? cause.message : '当前浏览器不支持画布预览。')
     }
-  }, [plan, palette, mode, currentStep, showProtractor, showGhost])
+  }, [fullscreenOpen, plan, result.palette, mode, currentStep, showProtractor, showGhost])
 
   useEffect(() => {
     if (!fullscreenOpen || !fullscreenCanvas.current) return
     try {
-      renderCompassBoard(fullscreenCanvas.current, plan, palette, {
+      renderCompassBoard(fullscreenCanvas.current, plan, result.palette, {
         mode,
         currentStep,
         showProtractor,
         showGhost,
       }, 960)
     } catch { /* main previewError already handles canvas failure */ }
-  }, [fullscreenOpen, plan, palette, mode, currentStep, showProtractor, showGhost])
+  }, [fullscreenOpen, plan, result.palette, mode, currentStep, showProtractor, showGhost])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -328,7 +411,10 @@ export default function CompassStudio() {
     try {
       const image = await decodeLocalImage(file)
       if (!mounted.current || id !== requestId.current) return
-      sampleImageToCompassField(image, DEFAULT_COMPASS_MAP_SIZE, palette, usePhotoColors, autoInvert, contrastMode)
+      const rgba = readCroppedImageRgba(image, DEFAULT_COMPASS_MAP_SIZE, DEFAULT_PHOTO_FRAMING)
+      if (!hasOpaquePixels(rgba, 16)) {
+        throw new Error('这张图片全部透明，无法提取圆规画，请换一张主体清晰的图片。')
+      }
       const preview = sourcePreview(image)
       const baseName = file.name.replace(/\.[^.]+$/, '') || '照片圆规画'
       setFraming(DEFAULT_PHOTO_FRAMING)
@@ -552,10 +638,10 @@ export default function CompassStudio() {
             </div>
           )}
 
-          {(error || field.error) && (
+          {(error || generationError) && (
             <p className="compass-error" role="alert">
               <Info size={14} />
-              {error || field.error}
+              {error || generationError}
             </p>
           )}
 
@@ -776,7 +862,7 @@ export default function CompassStudio() {
               </div>
             </div>
 
-            {!hasSteps && (
+            {isPlanCurrent && !hasSteps && (
               <p className="compass-empty-state" role="status">
                 未生成圆规画步骤：目标为空（如纯白图片），或当前对比度下无可绘制的暗区。请换图或调低对比度 / 开启反相。
               </p>
@@ -788,7 +874,7 @@ export default function CompassStudio() {
                   <canvas
                     ref={boardCanvas}
                     role="img"
-                    aria-label={`${title} 圆规画画布：${plan.paperSizeCm} 厘米画幅，${plan.ringCount} 圈，${hasSteps ? `当前第 ${currentStep} / ${totalSteps} 步` : '暂无可用画弧步骤'}`}
+                    aria-label={`${displayTitle} 圆规画画布：${plan.paperSizeCm} 厘米画幅，${plan.ringCount} 圈，${hasSteps ? `当前第 ${currentStep} / ${totalSteps} 步` : '暂无可用画弧步骤'}`}
                   >
                     {hasSteps ? '圆规画预览画布：请查看右侧半径与角度清单或导出图纸。' : '暂无可用圆规画步骤，请更换图片或调整参数。'}
                   </canvas>

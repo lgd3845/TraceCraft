@@ -24,19 +24,17 @@ import ExportArtworkModal from '../../components/ExportArtworkModal'
 import SaveArtworkModal from '../../components/SaveArtworkModal'
 import { canvasThumbnailDataUrl, compressImageForStorage, loadImageFromDataUrl } from '../../lib/artworkImage'
 import { downloadFile } from '../../lib/export'
+import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
 import { useStudio } from '../../lib/studio'
 import type { EmbroideryArtworkData } from '../../lib/types'
 import {
   buildEmbroideryTemplateSvg,
   COLOR_LIMITS,
-  createEmbroideryExampleRgba,
   DENSITY_LEVELS,
   EMBROIDERY_EXAMPLES,
   embroideryMaterialsCsv,
   FABRIC_PRESETS,
-  generateEmbroideryPlan,
   HOOP_SIZES_CM,
-  quantizeImageToEmbroideryGrid,
   safeEmbroideryFilename,
   STITCH_MODE_INFO,
 } from './embroidery'
@@ -44,6 +42,7 @@ import type {
   ColorLimit,
   DensityLevel,
   EmbroideryExampleId,
+  EmbroideryPlan,
   HoopSizeCm,
   StitchMode,
 } from './embroidery'
@@ -51,16 +50,34 @@ import {
   canvasPngBlob,
   decodeLocalImage,
   embroiderySheetCanvas,
+  readEmbroideryImageRgba,
   renderEmbroideryBoard,
-  sampleImageToEmbroideryGrid,
   sourcePreview,
 } from './embroideryCanvas'
 import type { EmbroideryViewMode } from './embroideryCanvas'
+import type { EmbroideryWorkerRequest } from './embroidery.worker'
 import './embroidery.css'
 
 type SourceState =
   | { kind: 'example'; id: EmbroideryExampleId; label: string; preview: '' }
-  | { kind: 'photo'; name: string; image: HTMLImageElement; preview: string }
+  | { kind: 'photo'; uploadId: string; name: string; image: HTMLImageElement; preview: string }
+
+function emptyEmbroideryPlan(stitchMode: StitchMode, hoopSizeCm: number): EmbroideryPlan {
+  return {
+    stitchMode,
+    hoopSizeCm,
+    gridWidth: 36,
+    gridHeight: 36,
+    cellSizeNorm: 1.68 / 36,
+    stitches: [],
+    layers: [],
+    contours: [],
+    totalStitches: 0,
+    totalMeters: 0,
+    estimatedMinutes: 0,
+    darkFabric: false,
+  }
+}
 
 export default function EmbroideryStudio() {
   const { editingArtwork, saveArtwork, notify } = useStudio()
@@ -115,12 +132,79 @@ export default function EmbroideryStudio() {
   const dragDepth = useRef(0)
   const requestId = useRef(0)
   const mounted = useRef(true)
+  const workerRunnerRef = useRef<PersistentWorkerRunner<EmbroideryWorkerRequest, EmbroideryPlan> | null>(null)
+
+  const fabric = useMemo(
+    () => FABRIC_PRESETS.find(item => item.id === fabricId) ?? FABRIC_PRESETS[0],
+    [fabricId],
+  )
+
+  const sampledPhoto = useMemo(() => {
+    if (source.kind !== 'photo') {
+      return { source: null as EmbroideryWorkerRequest['source'] | null, error: '' }
+    }
+    try {
+      const { rgba, width, height } = readEmbroideryImageRgba(source.image, 128)
+      if (!hasOpaquePixels(rgba, 32)) {
+        return {
+          source: null,
+          error: '这张图片全部透明，无法提取刺绣图案，请换一张主体清晰的图片。',
+        }
+      }
+      return {
+        source: {
+          kind: 'photo' as const,
+          rgba,
+          width,
+          height,
+          key: `ph:${source.uploadId}`,
+        },
+        error: '',
+      }
+    } catch (cause) {
+      return {
+        source: null,
+        error: cause instanceof Error ? cause.message : '图片采样失败，请换一张清晰图片重试。',
+      }
+    }
+  }, [source])
+
+  const workerPayload = useMemo<EmbroideryWorkerRequest | null>(() => {
+    const workerSource: EmbroideryWorkerRequest['source'] | null =
+      source.kind === 'example' ? { kind: 'example', id: source.id } : sampledPhoto.source
+    if (!workerSource) return null
+    return {
+      source: workerSource,
+      stitchMode,
+      gridSize,
+      maxColors,
+      hoopSizeCm,
+    }
+  }, [source, sampledPhoto.source, stitchMode, gridSize, maxColors, hoopSizeCm])
+
+  const generationJob = useMemo(() => ({ payload: workerPayload }), [workerPayload])
+  const [result, setResult] = useState(() => ({
+    job: null as typeof generationJob | null,
+    plan: emptyEmbroideryPlan(stitchMode, hoopSizeCm),
+    title: '',
+  }))
+  const [generationFailure, setGenerationFailure] = useState<{ job: typeof generationJob; message: string } | null>(null)
+  const titleRef = useRef(title)
+  titleRef.current = title
+
+  const plan = result.plan
+  const isPlanCurrent = result.job === generationJob
+  const displayTitle = isPlanCurrent ? title : result.title
+  const generationError = sampledPhoto.error || (generationFailure?.job === generationJob ? generationFailure.message : '')
+  const canUsePlan = isPlanCurrent && !busy && plan.totalStitches > 0 && !generationError
 
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
       requestId.current++
+      workerRunnerRef.current?.dispose()
+      workerRunnerRef.current = null
     }
   }, [])
 
@@ -132,6 +216,7 @@ export default function EmbroideryStudio() {
         if (!cancelled && mounted.current) {
           setSource({
             kind: 'photo',
+            uploadId: `saved:${editingArtwork?.id ?? 'work'}`,
             name: savedWork.sourceName,
             image,
             preview: savedWork.photoDataUrl!,
@@ -140,32 +225,42 @@ export default function EmbroideryStudio() {
       })
       .catch(() => { /* fallback example remains usable */ })
     return () => { cancelled = true }
-  }, [savedWork])
-
-  const fabric = useMemo(
-    () => FABRIC_PRESETS.find(item => item.id === fabricId) ?? FABRIC_PRESETS[0],
-    [fabricId],
-  )
-
-  const grid = useMemo(() => {
-    if (source.kind === 'photo') {
-      return sampleImageToEmbroideryGrid(source.image, gridSize, maxColors, true)
-    }
-    const { rgba, width, height } = createEmbroideryExampleRgba(source.id, 112)
-    return quantizeImageToEmbroideryGrid(rgba, width, height, gridSize, maxColors, true)
-  }, [source, gridSize, maxColors])
-
-  const plan = useMemo(
-    () => generateEmbroideryPlan(grid, stitchMode, hoopSizeCm, fabric.darkFabric),
-    [grid, stitchMode, hoopSizeCm, fabric.darkFabric],
-  )
+  }, [savedWork, editingArtwork?.id])
 
   useEffect(() => {
-    setCurrentStep(prev => Math.max(1, Math.min(plan.totalStitches, prev)))
+    if (!generationJob.payload) {
+      workerRunnerRef.current?.cancelCurrent()
+      return
+    }
+    if (typeof Worker === 'undefined') return
+    let cancelled = false
+    const submittedTitle = titleRef.current
+    const runner = (workerRunnerRef.current ??= new PersistentWorkerRunner(
+      () => new Worker(new URL('./embroidery.worker.ts', import.meta.url), { type: 'module' }),
+    ))
+    runner.submit(generationJob.payload, {
+      onSuccess: nextPlan => {
+        if (cancelled || !mounted.current) return
+        setCurrentStep(1)
+        setResult({ job: generationJob, plan: nextPlan, title: submittedTitle })
+        setGenerationFailure(null)
+      },
+      onError: message => {
+        if (cancelled || !mounted.current) return
+        setGenerationFailure({ job: generationJob, message })
+      },
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [generationJob])
+
+  useEffect(() => {
+    setCurrentStep(prev => Math.max(1, Math.min(Math.max(1, plan.totalStitches), prev)))
   }, [plan.totalStitches])
 
   useEffect(() => {
-    if (!canvasRef.current) return
+    if (fullscreenOpen || !canvasRef.current) return
     renderEmbroideryBoard(
       canvasRef.current,
       plan,
@@ -178,7 +273,7 @@ export default function EmbroideryStudio() {
       },
       720,
     )
-  }, [plan, fabric, viewMode, currentStep, showGrid, showGhost])
+  }, [fullscreenOpen, plan, fabric, viewMode, currentStep, showGrid, showGhost])
 
   useEffect(() => {
     if (!fullscreenOpen || !fullscreenCanvas.current) return
@@ -202,7 +297,7 @@ export default function EmbroideryStudio() {
         setFullscreenOpen(false)
         return
       }
-      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (!canUsePlan || event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
       if (
         target &&
@@ -223,10 +318,12 @@ export default function EmbroideryStudio() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [plan.totalStitches, fullscreenOpen])
+  }, [canUsePlan, plan.totalStitches, fullscreenOpen])
 
   function chooseExample(id: EmbroideryExampleId) {
     const meta = EMBROIDERY_EXAMPLES.find(item => item.id === id) ?? EMBROIDERY_EXAMPLES[0]
+    requestId.current++
+    setBusy(false)
     setError('')
     setSource({ kind: 'example', id: meta.id, label: meta.sourceName, preview: '' })
     setTitle(meta.title)
@@ -239,15 +336,19 @@ export default function EmbroideryStudio() {
     const file = files?.[0]
     if (!file) return
     const id = ++requestId.current
+    const uploadId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${id}-${Math.random().toString(36).slice(2)}`
     setBusy(true)
     setError('')
     try {
       const image = await decodeLocalImage(file)
-      sampleImageToEmbroideryGrid(image, gridSize, maxColors, true)
       if (!mounted.current || id !== requestId.current) return
+      const { rgba } = readEmbroideryImageRgba(image, 128)
+      if (!hasOpaquePixels(rgba, 32)) {
+        throw new Error('这张图片全部透明，无法提取刺绣图案，请换一张主体清晰的图片。')
+      }
       const preview = sourcePreview(image)
       const baseName = file.name.replace(/\.[^.]+$/, '') || '刺绣作品'
-      setSource({ kind: 'photo', name: file.name, image, preview })
+      setSource({ kind: 'photo', uploadId, name: file.name, image, preview })
       setTitle(`${baseName} · 刺绣`)
       setCurrentStep(1)
       notify('已抽出 DMC 色卡、结构流场方向与跟绣针序，照片仅在本机处理。')
@@ -267,6 +368,7 @@ export default function EmbroideryStudio() {
   }
 
   function exportTemplateSvg() {
+    if (!canUsePlan) return
     const svg = buildEmbroideryTemplateSvg(plan, title, fabric)
     downloadFile(
       svg,
@@ -276,11 +378,13 @@ export default function EmbroideryStudio() {
   }
 
   function exportMaterialsCsv() {
+    if (!canUsePlan) return
     const csv = embroideryMaterialsCsv(plan, title, fabric.name)
     downloadFile(csv, `${safeEmbroideryFilename(title)}-DMC绣线清单.csv`, 'text/csv;charset=utf-8')
   }
 
   async function exportSheetPng() {
+    if (!canUsePlan) return
     const png = await canvasPngBlob(embroiderySheetCanvas(plan, title, fabric))
     downloadFile(png, `${safeEmbroideryFilename(title)}-刺绣图纸.png`)
   }
@@ -329,14 +433,14 @@ export default function EmbroideryStudio() {
           <h1>刺绣工坊</h1>
         </div>
         <div className="heading-actions embroidery-actions">
-          <button type="button" className="btn btn-secondary" onClick={() => setExportDialogOpen(true)} disabled={busy}>
+          <button type="button" className="btn btn-secondary" onClick={() => setExportDialogOpen(true)} disabled={!canUsePlan}>
             <ArrowDownToLine size={15} /> 导出图纸
           </button>
           <button
             type="button"
             className="btn btn-primary"
             onClick={() => setSaveDialogOpen(true)}
-            disabled={busy}
+            disabled={!canUsePlan}
           >
             <Save size={15} />
             {savedId ? '更新作品' : '保存作品'}
@@ -404,10 +508,10 @@ export default function EmbroideryStudio() {
             <span>PNG / JPEG / WebP · 最大 10 MB</span>
           </button>
 
-          {error && (
+          {(error || generationError) && (
             <p className="embroidery-error" role="alert">
               <Info size={14} />
-              {error}
+              {error || generationError}
             </p>
           )}
 
@@ -552,6 +656,7 @@ export default function EmbroideryStudio() {
                   className={viewMode === 'guide' ? 'active' : ''}
                   aria-pressed={viewMode === 'guide'}
                   onClick={() => setViewMode('guide')}
+                  disabled={!canUsePlan}
                 >
                   <Play size={13} /> 分步跟绣教程
                 </button>
@@ -572,6 +677,7 @@ export default function EmbroideryStudio() {
                   type="button"
                   className="studio-fullscreen-btn"
                   onClick={() => setFullscreenOpen(true)}
+                  disabled={!canUsePlan}
                   aria-label="全屏浏览"
                 >
                   <Maximize2 size={13} />
@@ -586,7 +692,7 @@ export default function EmbroideryStudio() {
                   <canvas
                     ref={canvasRef}
                     role="img"
-                    aria-label={`${title}刺绣画布预览，${modeMeta.name}，共 ${plan.totalStitches} 针`}
+                    aria-label={`${displayTitle}刺绣画布预览，${STITCH_MODE_INFO[plan.stitchMode].name}，共 ${plan.totalStitches} 针`}
                   />
                 </div>
               </div>
@@ -640,7 +746,7 @@ export default function EmbroideryStudio() {
                     type="button"
                     className="btn btn-secondary"
                     onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))}
-                    disabled={currentStep <= 1}
+                    disabled={!canUsePlan || currentStep <= 1}
                   >
                     <ArrowLeft size={14} /> 上一针
                   </button>
@@ -648,7 +754,7 @@ export default function EmbroideryStudio() {
                     type="button"
                     className="btn btn-secondary"
                     onClick={() => setCurrentStep(prev => Math.min(plan.totalStitches, prev + 1))}
-                    disabled={currentStep >= plan.totalStitches}
+                    disabled={!canUsePlan || currentStep >= plan.totalStitches}
                   >
                     下一针 <ArrowRight size={14} />
                   </button>
@@ -658,6 +764,7 @@ export default function EmbroideryStudio() {
                     title="回到第 1 针"
                     aria-label="回到第 1 针"
                     onClick={() => setCurrentStep(1)}
+                    disabled={!canUsePlan}
                   >
                     <RotateCcw size={14} />
                   </button>
@@ -672,6 +779,7 @@ export default function EmbroideryStudio() {
                   max={Math.max(1, plan.totalStitches)}
                   value={currentStep}
                   aria-label="当前刺绣进度针步"
+                  disabled={!canUsePlan}
                   onChange={event => setCurrentStep(Number(event.target.value))}
                 />
                 <span>{Math.round((currentStep / Math.max(1, plan.totalStitches)) * 100)}%</span>
@@ -698,6 +806,7 @@ export default function EmbroideryStudio() {
                   type="button"
                   key={layer.index}
                   className={`embroidery-bom-row${isCurrent ? ' is-active' : ''}`}
+                  disabled={!canUsePlan}
                   onClick={() => {
                     setViewMode('guide')
                     setCurrentStep(layer.startStep)
@@ -730,6 +839,7 @@ export default function EmbroideryStudio() {
                 role="listitem"
                 key={item.index}
                 className={`embroidery-seq-item ${item.index === currentStep && viewMode === 'guide' ? 'is-current' : ''}`}
+                disabled={!canUsePlan}
                 onClick={() => {
                   setViewMode('guide')
                   setCurrentStep(item.index)
@@ -758,7 +868,7 @@ export default function EmbroideryStudio() {
             format: 'PNG',
             label: '高清刺绣图纸',
             defaultChecked: true,
-            disabled: busy,
+            disabled: !canUsePlan,
             onExport: exportSheetPng,
             successMessage: '高清刺绣图纸与 DMC 清单 PNG 已下载。',
           },
@@ -767,7 +877,7 @@ export default function EmbroideryStudio() {
             format: 'SVG',
             label: '1:1 水消笔底稿',
             defaultChecked: false,
-            disabled: busy,
+            disabled: !canUsePlan,
             onExport: exportTemplateSvg,
             successMessage: `已下载 ${plan.hoopSizeCm} cm 1:1 水消笔底稿 SVG。`,
           },
@@ -776,7 +886,7 @@ export default function EmbroideryStudio() {
             format: 'CSV',
             label: 'DMC 绣线清单',
             defaultChecked: false,
-            disabled: busy,
+            disabled: !canUsePlan,
             onExport: exportMaterialsCsv,
             successMessage: `已导出 ${plan.layers.length} 色 DMC 绣线与 ${plan.totalStitches} 针清单 CSV。`,
           },

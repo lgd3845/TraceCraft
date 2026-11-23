@@ -23,6 +23,7 @@ import ExportArtworkModal from '../../components/ExportArtworkModal'
 import SaveArtworkModal from '../../components/SaveArtworkModal'
 import { canvasThumbnailDataUrl, compressImageForStorage, loadImageFromDataUrl } from '../../lib/artworkImage'
 import { downloadFile } from '../../lib/export'
+import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
 import { readStepProgress, writeStepProgress } from '../../lib/storage'
 import { useStudio } from '../../lib/studio'
 import type { WireCraftArtworkData } from '../../lib/types'
@@ -31,7 +32,6 @@ import {
   buildNailTemplateSvg,
   CONTOUR_PEG_COUNTS,
   CONTOUR_STEP_COUNTS,
-  createExampleLayers,
   DEFAULT_STRING_MAP_SIZE,
   DEFAULT_THREAD_DARKNESS,
   generateStringArt,
@@ -48,21 +48,21 @@ import type {
   ColorWeaveMode,
   ContrastMode,
   NailLayoutMode,
+  StringArtPlan,
   StringExampleId,
 } from './stringArt'
 import {
   canvasPngBlob,
   decodeLocalImage,
   DEFAULT_PHOTO_FRAMING,
+  readCroppedImageRgba,
   renderPhotoFraming,
   renderStringArtBoard,
-  sampleImageToDarkness,
-  sampleImageToLayers,
   sourcePreview,
   stringArtSheetCanvas,
 } from './stringArtCanvas'
 import type { PhotoFraming } from './stringArtCanvas'
-import type { StringArtWorkerResponse } from './stringArt.worker'
+import type { StringArtWorkerRequest } from './stringArt.worker'
 import './wire-craft.css'
 
 const PROGRESS_STORAGE_KEY = 'tracecraft.string-art-progress.v3'
@@ -136,6 +136,7 @@ export default function WireCraftStudio() {
   const mounted = useRef(true)
   const requestId = useRef(0)
   const dragDepth = useRef(0)
+  const workerRunnerRef = useRef<PersistentWorkerRunner<StringArtWorkerRequest, StringArtPlan> | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const boardCanvas = useRef<HTMLCanvasElement>(null)
   const fullscreenCanvas = useRef<HTMLCanvasElement>(null)
@@ -155,59 +156,89 @@ export default function WireCraftStudio() {
     return `linear-v1|${id}|${framing.zoom}:${framing.x}:${framing.y}|${layoutMode}|${colorWeaveMode}|${contrastMode}|${pegCount}|${stepCount}|${threadDarkness}|${boardSizeCm}|${paletteId}|${autoInvert ? 1 : 0}`
   }, [source, framing, layoutMode, colorWeaveMode, contrastMode, pegCount, stepCount, threadDarkness, boardSizeCm, paletteId, usePhotoColors, autoInvert])
 
-  const sampling = useMemo(() => {
+  const sampledPhoto = useMemo(() => {
+    if (source.kind !== 'photo') {
+      return { source: null as StringArtWorkerRequest['source'] | null, error: '' }
+    }
     try {
-      if (source.kind === 'example') {
-        const layerInputs = createExampleLayers(source.id, DEFAULT_STRING_MAP_SIZE, palette, colorWeaveMode, contrastMode)
-        return { layerInputs, error: '' }
+      const rgba = readCroppedImageRgba(source.image, DEFAULT_STRING_MAP_SIZE, framing)
+      if (!hasOpaquePixels(rgba, 16)) {
+        return {
+          source: null,
+          error: '这张图片全部透明，无法提取绕线轮廓，请换一张主体清晰的图片。',
+        }
       }
       return {
-        layerInputs: sampleImageToLayers(
-          source.image,
-          DEFAULT_STRING_MAP_SIZE,
-          palette,
-          usePhotoColors,
-          autoInvert,
-          colorWeaveMode,
-          contrastMode,
-          framing,
-        ),
+        source: {
+          kind: 'photo' as const,
+          rgba,
+          width: DEFAULT_STRING_MAP_SIZE,
+          height: DEFAULT_STRING_MAP_SIZE,
+          key: `ph:${source.uploadId}:${framing.zoom}:${framing.x}:${framing.y}`,
+        },
         error: '',
       }
     } catch (cause) {
-      return { layerInputs: null, error: cause instanceof Error ? cause.message : '图片采样失败，请调整取景或更换照片。' }
+      return {
+        source: null,
+        error: cause instanceof Error ? cause.message : '图片采样失败，请调整取景或更换照片。',
+      }
     }
-  }, [source, palette, usePhotoColors, autoInvert, colorWeaveMode, contrastMode, framing, generationAttempt])
+  }, [source, framing])
 
-  const generationArgs = useMemo<Parameters<typeof generateStringArt> | null>(
-    () => sampling.layerInputs && [
-      sampling.layerInputs,
-      DEFAULT_STRING_MAP_SIZE,
+  const workerPayload = useMemo<StringArtWorkerRequest | null>(() => {
+    const workerSource: StringArtWorkerRequest['source'] | null =
+      source.kind === 'example' ? { kind: 'example', id: source.id } : sampledPhoto.source
+    if (!workerSource) return null
+    return {
+      source: workerSource,
+      mapSize: DEFAULT_STRING_MAP_SIZE,
       pegCount,
       stepCount,
       boardSizeCm,
       layoutMode,
       palette,
       threadDarkness,
-    ],
-    [sampling, pegCount, stepCount, boardSizeCm, layoutMode, palette, threadDarkness],
-  )
+      colorWeaveMode,
+      contrastMode,
+      usePhotoColors,
+      autoInvert,
+    }
+  }, [
+    source,
+    sampledPhoto.source,
+    pegCount,
+    stepCount,
+    boardSizeCm,
+    layoutMode,
+    palette,
+    threadDarkness,
+    colorWeaveMode,
+    contrastMode,
+    usePhotoColors,
+    autoInvert,
+  ])
+
   const generationJob = useMemo(
-    () => ({ signature: sourceSignature, args: generationArgs, attempt: generationAttempt }),
-    [sourceSignature, generationArgs, generationAttempt],
+    () => ({ signature: sourceSignature, payload: workerPayload, attempt: generationAttempt }),
+    [sourceSignature, workerPayload, generationAttempt],
   )
   const [result, setResult] = useState(() => ({
     job: null as typeof generationJob | null,
     // A zero target is cheap and preserves the plan contract during SSR.
     plan: generateStringArt(new Float32Array(DEFAULT_STRING_MAP_SIZE ** 2), DEFAULT_STRING_MAP_SIZE, pegCount, 0, boardSizeCm, layoutMode, palette, threadDarkness),
     palette,
+    title: '',
   }))
   const [generationFailure, setGenerationFailure] = useState<{ job: typeof generationJob; message: string } | null>(null)
+  const titleRef = useRef(title)
+  titleRef.current = title
   const plan = result.plan
   const totalSteps = plan.steps.length
   const hasSteps = totalSteps > 0
   const isPlanCurrent = result.job === generationJob
-  const generationError = sampling.error || (generationFailure?.job === generationJob ? generationFailure.message : '')
+  const displayTitle = isPlanCurrent ? title : result.title
+  const generationError = sampledPhoto.error || (generationFailure?.job === generationJob ? generationFailure.message : '')
   const generating = !isPlanCurrent && !generationError
   const canUsePlan = isPlanCurrent && !busy && hasSteps
   const [requestedStep, setCurrentStep] = useState(0)
@@ -218,6 +249,8 @@ export default function WireCraftStudio() {
     return () => {
       mounted.current = false
       requestId.current++
+      workerRunnerRef.current?.dispose()
+      workerRunnerRef.current = null
     }
   }, [])
 
@@ -241,44 +274,38 @@ export default function WireCraftStudio() {
   }, [savedWork, editingArtwork?.id])
 
   useEffect(() => {
-    if (!generationJob.args) return
-    let cancelled = false
-    let worker: Worker | undefined
-    const fail = (message: string) => {
-      if (cancelled) return
-      cancelled = true
-      worker?.terminate()
-      setGenerationFailure({ job: generationJob, message })
+    if (!generationJob.payload) {
+      workerRunnerRef.current?.cancelCurrent()
+      return
     }
-    try {
-      worker = new Worker(new URL('./stringArt.worker.ts', import.meta.url), { type: 'module' })
-      worker.onmessage = (event: MessageEvent<StringArtWorkerResponse>) => {
-        if (cancelled) return
-        if ('error' in event.data) {
-          fail(event.data.error)
-          return
-        }
-        cancelled = true
-        worker?.terminate()
-        const nextPlan = event.data.plan
+    if (typeof Worker === 'undefined') return
+    let cancelled = false
+    const submittedTitle = titleRef.current
+    const submittedPalette = generationJob.payload.palette
+    const runner = (workerRunnerRef.current ??= new PersistentWorkerRunner(
+      () => new Worker(new URL('./stringArt.worker.ts', import.meta.url), { type: 'module' }),
+      { cooperativeCancel: true },
+    ))
+    runner.submit(generationJob.payload, {
+      onSuccess: nextPlan => {
+        if (cancelled || !mounted.current) return
         setCurrentStep(clampStep(readSavedProgress(generationJob.signature) ?? 1, nextPlan.steps.length))
         if (nextPlan.steps.length === 0) setMode('full')
-        setResult({ job: generationJob, plan: nextPlan, palette: generationJob.args![6] ?? STRING_PALETTES[0] })
+        setResult({
+          job: generationJob,
+          plan: nextPlan,
+          palette: submittedPalette,
+          title: submittedTitle,
+        })
         setGenerationFailure(null)
-      }
-      worker.onerror = event => {
-        event.preventDefault()
-        fail(event.message || '生成失败，请重试或调整参数。')
-      }
-      worker.onmessageerror = () => fail('生成结果读取失败，请重试。')
-      // Clone the inputs rather than transferring buffers still owned by React.
-      worker.postMessage(generationJob.args)
-    } catch (cause) {
-      fail(cause instanceof Error ? cause.message : '当前浏览器无法启动本地计算，请重试。')
-    }
+      },
+      onError: message => {
+        if (cancelled || !mounted.current) return
+        setGenerationFailure({ job: generationJob, message })
+      },
+    })
     return () => {
       cancelled = true
-      worker?.terminate()
     }
   }, [generationJob])
 
@@ -297,7 +324,7 @@ export default function WireCraftStudio() {
   }, [source, framing])
 
   useEffect(() => {
-    if (!boardCanvas.current) return
+    if (fullscreenOpen || !boardCanvas.current) return
     try {
       renderStringArtBoard(boardCanvas.current, plan, result.palette, {
         mode,
@@ -309,7 +336,7 @@ export default function WireCraftStudio() {
     } catch (cause) {
       setPreviewError(cause instanceof Error ? cause.message : '当前浏览器不支持画布预览。')
     }
-  }, [plan, result.palette, mode, currentStep, showNumbers, showGhost])
+  }, [fullscreenOpen, plan, result.palette, mode, currentStep, showNumbers, showGhost])
 
   useEffect(() => {
     if (!fullscreenOpen || !fullscreenCanvas.current) return
@@ -387,7 +414,10 @@ export default function WireCraftStudio() {
     try {
       const image = await decodeLocalImage(file)
       if (!mounted.current || id !== requestId.current) return
-      sampleImageToDarkness(image, DEFAULT_STRING_MAP_SIZE, autoInvert, contrastMode)
+      const rgba = readCroppedImageRgba(image, DEFAULT_STRING_MAP_SIZE, DEFAULT_PHOTO_FRAMING)
+      if (!hasOpaquePixels(rgba, 16)) {
+        throw new Error('这张图片全部透明，无法提取绕线轮廓，请换一张主体清晰的图片。')
+      }
       const preview = sourcePreview(image)
       const baseName = file.name.replace(/\.[^.]+$/, '') || '照片绕线画'
       setFraming(DEFAULT_PHOTO_FRAMING)
@@ -892,7 +922,7 @@ export default function WireCraftStudio() {
                   <canvas
                     ref={boardCanvas}
                     role="img"
-                    aria-label={`${title} 绕线画画布：${plan.boardSizeCm} 厘米底板，${plan.pegCount} 颗钉子，${hasSteps ? `当前第 ${currentStep} / ${totalSteps} 步` : '暂无可用绕线步骤'}`}
+                    aria-label={`${displayTitle} 绕线画画布：${plan.boardSizeCm} 厘米底板，${plan.pegCount} 颗钉子，${hasSteps ? `当前第 ${currentStep} / ${totalSteps} 步` : '暂无可用绕线步骤'}`}
                   >
                     {hasSteps ? '绕线画预览画布：请查看右侧钉号顺序列表或导出图纸。' : '暂无可用绕线步骤，请更换图片或调整参数。'}
                   </canvas>

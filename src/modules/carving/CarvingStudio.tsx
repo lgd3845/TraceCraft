@@ -22,6 +22,7 @@ import ExportArtworkModal from '../../components/ExportArtworkModal'
 import SaveArtworkModal from '../../components/SaveArtworkModal'
 import { canvasThumbnailDataUrl, compressImageForStorage, loadImageFromDataUrl } from '../../lib/artworkImage'
 import { downloadFile } from '../../lib/export'
+import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
 import { readStepProgress, writeStepProgress } from '../../lib/storage'
 import { useStudio } from '../../lib/studio'
 import type { CarvingArtworkData } from '../../lib/types'
@@ -32,10 +33,8 @@ import {
   CARVING_EXAMPLES,
   CARVING_MATERIALS,
   carvingStepsCsv,
-  createCarvingExampleField,
   DEFAULT_CARVING_RESOLUTION,
   FRAME_SIZES_CM,
-  generateCarvingPlan,
   GRID_RESOLUTIONS,
   padCutStep,
   safeCarvingFilename,
@@ -45,6 +44,7 @@ import type {
   CarvingAlgorithm,
   CarvingContrastMode,
   CarvingExampleId,
+  CarvingPlan,
   CarvingResolution,
   FrameSizeCm,
 } from './carving'
@@ -53,13 +53,37 @@ import {
   carvingSheetCanvas,
   decodeLocalImage,
   DEFAULT_PHOTO_FRAMING,
+  readCroppedImageRgba,
   renderCarvingBoard,
   renderPhotoFraming,
-  sampleImageToCarvingField,
   sourcePreview,
 } from './carvingCanvas'
 import type { PhotoFraming } from './carvingCanvas'
+import type { CarvingWorkerRequest } from './carving.worker'
 import './carving.css'
+
+function emptyCarvingPlan(
+  algorithm: CarvingAlgorithm,
+  contrastMode: CarvingContrastMode,
+  gridSize: CarvingResolution,
+  frameSizeCm: FrameSizeCm,
+  bridgeWidthMm: BridgeWidthMm,
+): CarvingPlan {
+  return {
+    algorithm,
+    contrastMode,
+    gridSize,
+    frameSizeCm,
+    frameWidthMm: Number((frameSizeCm * 10).toFixed(1)),
+    bridgeWidthMm,
+    floatingIslandsBridged: 0,
+    bridges: [],
+    layers: [],
+    steps: [],
+    totalPerimeterMeters: 0,
+    mirrorPrint: false,
+  }
+}
 
 const PROGRESS_STORAGE_KEY = 'tracecraft.carving-progress.v1'
 
@@ -134,6 +158,7 @@ export default function CarvingStudio() {
   const mounted = useRef(true)
   const requestId = useRef(0)
   const dragDepth = useRef(0)
+  const workerRunnerRef = useRef<PersistentWorkerRunner<CarvingWorkerRequest, CarvingPlan> | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const boardCanvas = useRef<HTMLCanvasElement>(null)
   const fullscreenCanvas = useRef<HTMLCanvasElement>(null)
@@ -149,56 +174,83 @@ export default function CarvingStudio() {
     return `carving-v1|${id}|${framing.zoom}:${framing.x}:${framing.y}|${algorithm}|${contrastMode}|${bridgeWidthMm}|${gridSize}|${frameSizeCm}`
   }, [source, framing, algorithm, contrastMode, bridgeWidthMm, gridSize, frameSizeCm])
 
-  const field = useMemo(() => {
+  const sampledPhoto = useMemo(() => {
+    if (source.kind !== 'photo') {
+      return { source: null as CarvingWorkerRequest['source'] | null, error: '' }
+    }
     try {
-      const base =
-        source.kind === 'example'
-          ? createCarvingExampleField(source.id, gridSize, contrastMode, false)
-          : sampleImageToCarvingField(
-              source.image,
-              gridSize,
-              false,
-              contrastMode,
-              false,
-              framing,
-            )
-      return { value: base, error: '' }
+      const rgba = readCroppedImageRgba(source.image, gridSize, framing)
+      if (!hasOpaquePixels(rgba, 16)) {
+        return {
+          source: null,
+          error: '这张图片全部透明，无法生成雕刻画底稿，请换一张主体清晰的图片。',
+        }
+      }
+      return {
+        source: {
+          kind: 'photo' as const,
+          rgba,
+          width: gridSize,
+          height: gridSize,
+          key: `ph:${source.uploadId}:${gridSize}:${framing.zoom}:${framing.x}:${framing.y}`,
+        },
+        error: '',
+      }
     } catch (cause) {
       return {
-        value: null,
+        source: null,
         error: cause instanceof Error ? cause.message : '图片采样失败，请调整取景或更换照片。',
       }
     }
-  }, [source, gridSize, contrastMode, framing])
+  }, [source, gridSize, framing])
 
-  const plan = useMemo(() => {
-    if (!field.value) {
-      return generateCarvingPlan(
-        {
-          gridSize,
-          darkness: new Float32Array(gridSize * gridSize),
-          edgeStrength: new Float32Array(gridSize * gridSize),
-        },
-        algorithm,
-        frameSizeCm,
-        bridgeWidthMm,
-        contrastMode,
-        false,
-      )
+  const workerPayload = useMemo<CarvingWorkerRequest | null>(() => {
+    const workerSource: CarvingWorkerRequest['source'] | null =
+      source.kind === 'example' ? { kind: 'example', id: source.id } : sampledPhoto.source
+    if (!workerSource) return null
+    return {
+      source: workerSource,
+      gridSize,
+      algorithm,
+      frameSizeCm,
+      bridgeWidthMm,
+      contrastMode,
     }
-    return generateCarvingPlan(field.value, algorithm, frameSizeCm, bridgeWidthMm, contrastMode, false)
-  }, [field.value, gridSize, algorithm, frameSizeCm, bridgeWidthMm, contrastMode])
+  }, [source, sampledPhoto.source, gridSize, algorithm, frameSizeCm, bridgeWidthMm, contrastMode])
 
+  const generationJob = useMemo(
+    () => ({ signature, payload: workerPayload }),
+    [signature, workerPayload],
+  )
+  const [result, setResult] = useState<{
+    job: typeof generationJob | null
+    plan: CarvingPlan
+    title: string
+  }>(() => ({
+    job: null,
+    plan: emptyCarvingPlan(algorithm, contrastMode, gridSize, frameSizeCm, bridgeWidthMm),
+    title: '',
+  }))
+  const [generationFailure, setGenerationFailure] = useState<{ job: typeof generationJob; message: string } | null>(null)
+  const titleRef = useRef(title)
+  titleRef.current = title
+
+  const plan = result.plan
   const totalSteps = plan.steps.length
   const hasSteps = totalSteps > 0
+  const isPlanCurrent = result.job === generationJob
+  const displayTitle = isPlanCurrent ? title : result.title
+  const generationError = sampledPhoto.error || (generationFailure?.job === generationJob ? generationFailure.message : '')
   const currentStep = clampStep(requestedStep, totalSteps)
-  const canUsePlan = !busy && hasSteps && !field.error
+  const canUsePlan = isPlanCurrent && !busy && hasSteps && !generationError
 
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
       requestId.current++
+      workerRunnerRef.current?.dispose()
+      workerRunnerRef.current = null
     }
   }, [])
 
@@ -222,14 +274,44 @@ export default function CarvingStudio() {
   }, [savedWork, editingArtwork?.id])
 
   useEffect(() => {
-    const saved = readSavedProgress(signature)
-    setCurrentStep(clampStep(saved ?? 1, totalSteps))
-    if (totalSteps === 0 && mode === 'guide') setMode('realistic')
-  }, [signature, totalSteps, mode])
+    if (!generationJob.payload) {
+      workerRunnerRef.current?.cancelCurrent()
+      return
+    }
+    if (typeof Worker === 'undefined') return
+    let cancelled = false
+    const submittedTitle = titleRef.current
+    const runner = (workerRunnerRef.current ??= new PersistentWorkerRunner(
+      () => new Worker(new URL('./carving.worker.ts', import.meta.url), { type: 'module' }),
+    ))
+    runner.submit(generationJob.payload, {
+      onSuccess: nextPlan => {
+        if (cancelled || !mounted.current) return
+        const saved = readSavedProgress(generationJob.signature)
+        setCurrentStep(clampStep(saved ?? 1, nextPlan.steps.length))
+        if (nextPlan.steps.length === 0) {
+          setMode(prev => (prev === 'guide' ? 'realistic' : prev))
+        }
+        setResult({
+          job: generationJob,
+          plan: nextPlan,
+          title: submittedTitle,
+        })
+        setGenerationFailure(null)
+      },
+      onError: message => {
+        if (cancelled || !mounted.current) return
+        setGenerationFailure({ job: generationJob, message })
+      },
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [generationJob])
 
   useEffect(() => {
-    writeSavedProgress(signature, currentStep)
-  }, [signature, currentStep])
+    if (isPlanCurrent) writeSavedProgress(signature, currentStep)
+  }, [isPlanCurrent, signature, currentStep])
 
   useEffect(() => {
     if (source.kind !== 'photo' || !photoFramingCanvas.current) return
@@ -242,7 +324,7 @@ export default function CarvingStudio() {
   }, [source, framing])
 
   useEffect(() => {
-    if (!boardCanvas.current) return
+    if (fullscreenOpen || !boardCanvas.current) return
     try {
       renderCarvingBoard(boardCanvas.current, plan, material, {
         mode,
@@ -254,7 +336,7 @@ export default function CarvingStudio() {
     } catch (cause) {
       setPreviewError(cause instanceof Error ? cause.message : '当前浏览器不支持画布预览。')
     }
-  }, [plan, material, mode, currentStep, showBridges, showGhost])
+  }, [fullscreenOpen, plan, material, mode, currentStep, showBridges, showGhost])
 
   useEffect(() => {
     if (!fullscreenOpen || !fullscreenCanvas.current) return
@@ -320,7 +402,10 @@ export default function CarvingStudio() {
     try {
       const image = await decodeLocalImage(file)
       if (!mounted.current || id !== requestId.current) return
-      sampleImageToCarvingField(image, gridSize, false, contrastMode, false, framing)
+      const rgba = readCroppedImageRgba(image, gridSize, DEFAULT_PHOTO_FRAMING)
+      if (!hasOpaquePixels(rgba, 16)) {
+        throw new Error('这张图片全部透明，无法生成雕刻画底稿，请换一张主体清晰的图片。')
+      }
       const preview = sourcePreview(image)
       const baseName = file.name.replace(/\.[^.]+$/, '') || '照片雕刻底稿'
       setFraming(DEFAULT_PHOTO_FRAMING)
@@ -543,10 +628,10 @@ export default function CarvingStudio() {
             </div>
           )}
 
-          {(error || field.error) && (
+          {(error || generationError) && (
             <p className="carving-error" role="alert">
               <Info size={14} />
-              {error || field.error}
+              {error || generationError}
             </p>
           )}
 
@@ -752,7 +837,7 @@ export default function CarvingStudio() {
               </div>
             </div>
 
-            {!hasSteps && (
+            {isPlanCurrent && !hasSteps && (
               <p className="carving-empty-state" role="status">
                 未生成镂空下刀步骤：目标为空（如纯白图片），或当前对比度下未提取出可雕刻区域。请换图或开启阴阳反相。
               </p>
@@ -764,7 +849,7 @@ export default function CarvingStudio() {
                   <canvas
                     ref={boardCanvas}
                     role="img"
-                    aria-label={`${title} 雕刻画底稿画布：${plan.frameSizeCm} 厘米画幅，${hasSteps ? `共 ${totalSteps} 刀` : '暂无雕刻步骤'}`}
+                    aria-label={`${displayTitle} 雕刻画底稿画布：${plan.frameSizeCm} 厘米画幅，${hasSteps ? `共 ${totalSteps} 刀` : '暂无雕刻步骤'}`}
                   >
                     {hasSteps ? '雕刻画底稿预览画布：请查看右侧下刀清单或导出图纸。' : '暂无可用雕刻步骤，请更换图片或调整参数。'}
                   </canvas>
