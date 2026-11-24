@@ -69,6 +69,79 @@ function stepMaxWidthRatio(plan: CompassPlan): number {
   return 0.74
 }
 
+function traceArcStepRibbon(
+  path: CanvasPath,
+  step: CompassArcStep,
+  cx: number,
+  cy: number,
+  drawRadius: number,
+  plan: CompassPlan,
+  scale: number,
+  maxWidthCapPx: number,
+  extraWidthScale = 1,
+): boolean {
+  const samples = step.samples
+  if (samples.length < 2) return false
+  const centerSpec = plan.centers.find(c => c.id === step.centerId) ?? plan.centers[0]
+  const ocx = cx + (centerSpec?.nx ?? 0) * drawRadius
+  const ocy = cy + (centerSpec?.ny ?? 0) * drawRadius
+  const spacingPx = drawRadius * plan.ringSpacingNorm
+  const widthRatio = stepMaxWidthRatio(plan)
+
+  const n = samples.length
+  const pxArr = new Float64Array(n)
+  const pyArr = new Float64Array(n)
+  const hwArr = new Float64Array(n)
+  for (let i = 0; i < n; i++) {
+    const s = samples[i]
+    const rPx = s.radiusNorm * drawRadius
+    pxArr[i] = ocx + Math.sin(s.angleRad) * rPx
+    pyArr[i] = ocy - Math.cos(s.angleRad) * rPx
+    const strokeW = Math.max(0.45 * scale, Math.min(maxWidthCapPx, s.widthNorm * spacingPx * widthRatio) * extraWidthScale)
+    hwArr[i] = strokeW * 0.5
+  }
+
+  const lx = new Float64Array(n)
+  const ly = new Float64Array(n)
+  const rx = new Float64Array(n)
+  const ry = new Float64Array(n)
+  for (let i = 0; i < n; i++) {
+    const prevIdx = i > 0 ? i - 1 : 0
+    const nextIdx = i + 1 < n ? i + 1 : n - 1
+    const dx = pxArr[nextIdx] - pxArr[prevIdx]
+    const dy = pyArr[nextIdx] - pyArr[prevIdx]
+    const len = Math.hypot(dx, dy) || 1
+    const nx = -dy / len
+    const ny = dx / len
+    const hw = hwArr[i]
+    lx[i] = pxArr[i] + nx * hw
+    ly[i] = pyArr[i] + ny * hw
+    rx[i] = pxArr[i] - nx * hw
+    ry[i] = pyArr[i] - ny * hw
+  }
+
+  path.moveTo(lx[0], ly[0])
+  for (let i = 1; i < n; i++) path.lineTo(lx[i], ly[i])
+  for (let i = n - 1; i >= 0; i--) path.lineTo(rx[i], ry[i])
+  path.closePath()
+  return true
+}
+
+function buildArcRibbonPath(
+  step: CompassArcStep,
+  cx: number,
+  cy: number,
+  drawRadius: number,
+  plan: CompassPlan,
+  scale: number,
+  maxWidthCapPx: number,
+  extraWidthScale = 1,
+): Path2D | null {
+  if (typeof Path2D === 'undefined' || step.samples.length < 2) return null
+  const path = new Path2D()
+  return traceArcStepRibbon(path, step, cx, cy, drawRadius, plan, scale, maxWidthCapPx, extraWidthScale) ? path : null
+}
+
 function drawArcStepRibbon(
   ctx: CanvasRenderingContext2D,
   step: CompassArcStep,
@@ -81,60 +154,22 @@ function drawArcStepRibbon(
   overrideColor?: string,
   extraWidthScale = 1,
 ) {
-  const samples = step.samples
-  if (samples.length < 2) return
-  const centerSpec = plan.centers.find(c => c.id === step.centerId) ?? plan.centers[0]
-  const ocx = cx + (centerSpec?.nx ?? 0) * drawRadius
-  const ocy = cy + (centerSpec?.ny ?? 0) * drawRadius
-  const spacingPx = drawRadius * plan.ringSpacingNorm
-
-  const pts: Array<{ x: number; y: number; hw: number }> = new Array(samples.length)
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i]
-    const rPx = s.radiusNorm * drawRadius
-    const x = ocx + Math.sin(s.angleRad) * rPx
-    const y = ocy - Math.cos(s.angleRad) * rPx
-    const strokeW = Math.max(0.45 * scale, Math.min(maxWidthCapPx, s.widthNorm * spacingPx * stepMaxWidthRatio(plan)) * extraWidthScale)
-    pts[i] = { x, y, hw: strokeW * 0.5 }
-  }
-
-  const left: Array<{ x: number; y: number }> = new Array(pts.length)
-  const right: Array<{ x: number; y: number }> = new Array(pts.length)
-
-  for (let i = 0; i < pts.length; i++) {
-    const prev = pts[Math.max(0, i - 1)]
-    const next = pts[Math.min(pts.length - 1, i + 1)]
-    const dx = next.x - prev.x
-    const dy = next.y - prev.y
-    const len = Math.hypot(dx, dy) || 1
-    const nx = -dy / len
-    const ny = dx / len
-    const hw = pts[i].hw
-    left[i] = { x: pts[i].x + nx * hw, y: pts[i].y + ny * hw }
-    right[i] = { x: pts[i].x - nx * hw, y: pts[i].y - ny * hw }
-  }
-
+  if (step.samples.length < 2) return
   ctx.fillStyle = overrideColor ?? step.color
   ctx.beginPath()
-  ctx.moveTo(left[0].x, left[0].y)
-  for (let i = 1; i < left.length; i++) ctx.lineTo(left[i].x, left[i].y)
-  for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y)
-  ctx.closePath()
-  ctx.fill()
+  if (traceArcStepRibbon(ctx, step, cx, cy, drawRadius, plan, scale, maxWidthCapPx, extraWidthScale)) {
+    ctx.fill()
+  }
 }
 
-export function drawCompassScene(
+function drawCompassBackdrop(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   boardRadius: number,
-  plan: CompassPlan,
   palette: CompassPalette,
-  options: CompassRenderOptions,
+  scale: number,
 ) {
-  const scale = boardRadius / 320
-  const drawRadius = boardRadius * 0.855
-
   // Outer drafting board rim + shadow
   ctx.save()
   ctx.shadowColor = 'rgba(42, 36, 26, 0.16)'
@@ -153,6 +188,157 @@ export function drawCompassScene(
   ctx.lineWidth = Math.max(1.5, 4 * scale)
   ctx.strokeStyle = palette.rim
   ctx.stroke()
+}
+
+function drawCompassProtractorRing(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  drawRadius: number,
+  palette: CompassPalette,
+  scale: number,
+) {
+  ctx.save()
+  ctx.strokeStyle = palette.darkPaper ? 'rgba(226, 236, 246, 0.24)' : 'rgba(72, 79, 63, 0.22)'
+  ctx.lineWidth = Math.max(0.7, 0.9 * scale)
+  ctx.beginPath()
+  ctx.arc(cx, cy, drawRadius + 3 * scale, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.font = `600 ${Math.round(Math.max(8, 9.2 * scale))}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  for (let deg = 0; deg < 360; deg += 15) {
+    const rad = (deg * Math.PI) / 180
+    const major = deg % 30 === 0
+    const r0 = drawRadius + 3 * scale
+    const r1 = drawRadius + (major ? 10.5 * scale : 6.5 * scale)
+    ctx.beginPath()
+    ctx.moveTo(cx + Math.sin(rad) * r0, cy - Math.cos(rad) * r0)
+    ctx.lineTo(cx + Math.sin(rad) * r1, cy - Math.cos(rad) * r1)
+    ctx.strokeStyle = palette.darkPaper
+      ? major ? 'rgba(232, 240, 248, 0.55)' : 'rgba(232, 240, 248, 0.25)'
+      : major ? 'rgba(72, 79, 63, 0.55)' : 'rgba(72, 79, 63, 0.22)'
+    ctx.stroke()
+    if (major) {
+      const lr = drawRadius + 19.5 * scale
+      ctx.fillStyle = palette.darkPaper ? 'rgba(232, 240, 248, 0.72)' : 'rgba(72, 79, 63, 0.72)'
+      ctx.fillText(`${deg}°`, cx + Math.sin(rad) * lr, cy - Math.cos(rad) * lr)
+    }
+  }
+  ctx.restore()
+}
+
+function drawCompassCenterPins(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  drawRadius: number,
+  plan: CompassPlan,
+  palette: CompassPalette,
+  scale: number,
+  activeCenterId?: string,
+) {
+  ctx.save()
+  ctx.font = `700 ${Math.round(Math.max(9, 10 * scale))}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  for (const c of plan.centers) {
+    const px = cx + c.nx * drawRadius
+    const py = cy + c.ny * drawRadius
+    const isCurrentCenter = activeCenterId === c.id
+    ctx.beginPath()
+    ctx.moveTo(px - 6 * scale, py)
+    ctx.lineTo(px + 6 * scale, py)
+    ctx.moveTo(px, py - 6 * scale)
+    ctx.lineTo(px, py + 6 * scale)
+    ctx.strokeStyle = isCurrentCenter ? '#c74b37' : palette.darkPaper ? '#f1cf88' : '#8c533c'
+    ctx.lineWidth = isCurrentCenter ? 2 * scale : 1.1 * scale
+    ctx.stroke()
+
+    ctx.beginPath()
+    ctx.arc(px, py, isCurrentCenter ? 4 * scale : 2.3 * scale, 0, Math.PI * 2)
+    ctx.fillStyle = isCurrentCenter ? '#c74b37' : palette.paper
+    ctx.fill()
+    ctx.stroke()
+
+    if (plan.centers.length > 1 || isCurrentCenter) {
+      ctx.fillStyle = isCurrentCenter ? '#c74b37' : palette.darkPaper ? '#f1cf88' : '#8c533c'
+      ctx.fillText(c.id, px, py - 12 * scale)
+    }
+  }
+  ctx.restore()
+}
+
+function drawActiveCompassArm(
+  ctx: CanvasRenderingContext2D,
+  active: CompassArcStep,
+  cx: number,
+  cy: number,
+  drawRadius: number,
+  plan: CompassPlan,
+  palette: CompassPalette,
+  scale: number,
+) {
+  if (active.samples.length === 0) return
+  const centerSpec = plan.centers.find(c => c.id === active.centerId) ?? plan.centers[0]
+  const ocx = cx + (centerSpec?.nx ?? 0) * drawRadius
+  const ocy = cy + (centerSpec?.ny ?? 0) * drawRadius
+  const endSample = active.samples[active.samples.length - 1]
+  const rPx = endSample.radiusNorm * drawRadius
+  const ux = Math.sin(endSample.angleRad)
+  const uy = -Math.cos(endSample.angleRad)
+  const ex = ocx + ux * rPx
+  const ey = ocy + uy * rPx
+  const badgeX = rPx < 54 * scale ? ex + ux * 44 * scale : (ocx + ex) * 0.5
+  const badgeY = rPx < 54 * scale ? ey + uy * 24 * scale : (ocy + ey) * 0.5
+  const accent = palette.darkPaper ? '#ff9d66' : '#c74b37'
+
+  ctx.save()
+  ctx.strokeStyle = accent
+  ctx.lineWidth = 1.6 * scale
+  ctx.setLineDash([5 * scale, 4 * scale])
+  ctx.beginPath()
+  ctx.moveTo(ocx, ocy)
+  ctx.lineTo(ex, ey)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // Pen tip dot on the end of active arc
+  ctx.beginPath()
+  ctx.arc(ex, ey, 4.5 * scale, 0, Math.PI * 2)
+  ctx.fillStyle = accent
+  ctx.fill()
+
+  // Radius pill badge
+  const badge = `R=${active.radiusMm}mm`
+  const bw = 66 * scale
+  const bh = 20 * scale
+  ctx.fillStyle = accent
+  ctx.beginPath()
+  ctx.roundRect(badgeX - bw / 2, badgeY - bh / 2, bw, bh, 6 * scale)
+  ctx.fill()
+  ctx.fillStyle = '#ffffff'
+  ctx.font = `700 ${Math.round(10 * scale)}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(badge, badgeX, badgeY + 0.5 * scale)
+  ctx.restore()
+}
+
+export function drawCompassScene(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  boardRadius: number,
+  plan: CompassPlan,
+  palette: CompassPalette,
+  options: CompassRenderOptions,
+) {
+  const scale = boardRadius / 320
+  const drawRadius = boardRadius * 0.855
+
+  drawCompassBackdrop(ctx, cx, cy, boardRadius, palette, scale)
 
   // Clip all compass arcs cleanly to drafting paper circle
   ctx.save()
@@ -198,110 +384,129 @@ export function drawCompassScene(
 
   // Optional protractor ring and drafting center pinholes
   if (options.showProtractor) {
-    ctx.save()
-    ctx.strokeStyle = palette.darkPaper ? 'rgba(226, 236, 246, 0.24)' : 'rgba(72, 79, 63, 0.22)'
-    ctx.lineWidth = Math.max(0.7, 0.9 * scale)
-    ctx.beginPath()
-    ctx.arc(cx, cy, drawRadius + 3 * scale, 0, Math.PI * 2)
-    ctx.stroke()
-
-    ctx.font = `600 ${Math.round(Math.max(8, 9.2 * scale))}px sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    for (let deg = 0; deg < 360; deg += 15) {
-      const rad = (deg * Math.PI) / 180
-      const major = deg % 30 === 0
-      const r0 = drawRadius + 3 * scale
-      const r1 = drawRadius + (major ? 10.5 * scale : 6.5 * scale)
-      ctx.beginPath()
-      ctx.moveTo(cx + Math.sin(rad) * r0, cy - Math.cos(rad) * r0)
-      ctx.lineTo(cx + Math.sin(rad) * r1, cy - Math.cos(rad) * r1)
-      ctx.strokeStyle = palette.darkPaper
-        ? major ? 'rgba(232, 240, 248, 0.55)' : 'rgba(232, 240, 248, 0.25)'
-        : major ? 'rgba(72, 79, 63, 0.55)' : 'rgba(72, 79, 63, 0.22)'
-      ctx.stroke()
-      if (major) {
-        const lr = drawRadius + 19.5 * scale
-        ctx.fillStyle = palette.darkPaper ? 'rgba(232, 240, 248, 0.72)' : 'rgba(72, 79, 63, 0.72)'
-        ctx.fillText(`${deg}°`, cx + Math.sin(rad) * lr, cy - Math.cos(rad) * lr)
-      }
-    }
-
-    // Center crosshair pins
-    for (const c of plan.centers) {
-      const px = cx + c.nx * drawRadius
-      const py = cy + c.ny * drawRadius
-      const isCurrentCenter = active?.centerId === c.id
-      ctx.beginPath()
-      ctx.moveTo(px - 6 * scale, py)
-      ctx.lineTo(px + 6 * scale, py)
-      ctx.moveTo(px, py - 6 * scale)
-      ctx.lineTo(px, py + 6 * scale)
-      ctx.strokeStyle = isCurrentCenter ? '#c74b37' : palette.darkPaper ? '#f1cf88' : '#8c533c'
-      ctx.lineWidth = isCurrentCenter ? 2 * scale : 1.1 * scale
-      ctx.stroke()
-
-      ctx.beginPath()
-      ctx.arc(px, py, isCurrentCenter ? 4 * scale : 2.3 * scale, 0, Math.PI * 2)
-      ctx.fillStyle = isCurrentCenter ? '#c74b37' : palette.paper
-      ctx.fill()
-      ctx.stroke()
-
-      if (plan.centers.length > 1 || isCurrentCenter) {
-        ctx.fillStyle = isCurrentCenter ? '#c74b37' : palette.darkPaper ? '#f1cf88' : '#8c533c'
-        ctx.font = `700 ${Math.round(Math.max(9, 10 * scale))}px sans-serif`
-        ctx.fillText(c.id, px, py - 12 * scale)
-      }
-    }
-    ctx.restore()
+    drawCompassProtractorRing(ctx, cx, cy, drawRadius, palette, scale)
+    drawCompassCenterPins(ctx, cx, cy, drawRadius, plan, palette, scale, active?.centerId)
   }
 
   // Virtual compass arm overlay in guide mode pointing from active center to current arc
-  if (active && active.samples.length > 0) {
-    const centerSpec = plan.centers.find(c => c.id === active.centerId) ?? plan.centers[0]
-    const ocx = cx + (centerSpec?.nx ?? 0) * drawRadius
-    const ocy = cy + (centerSpec?.ny ?? 0) * drawRadius
-    const endSample = active.samples[active.samples.length - 1]
-    const rPx = endSample.radiusNorm * drawRadius
-    const ux = Math.sin(endSample.angleRad)
-    const uy = -Math.cos(endSample.angleRad)
-    const ex = ocx + ux * rPx
-    const ey = ocy + uy * rPx
-    const badgeX = rPx < 54 * scale ? ex + ux * 44 * scale : (ocx + ex) * 0.5
-    const badgeY = rPx < 54 * scale ? ey + uy * 24 * scale : (ocy + ey) * 0.5
-    const accent = palette.darkPaper ? '#ff9d66' : '#c74b37'
-
-    ctx.save()
-    ctx.strokeStyle = accent
-    ctx.lineWidth = 1.6 * scale
-    ctx.setLineDash([5 * scale, 4 * scale])
-    ctx.beginPath()
-    ctx.moveTo(ocx, ocy)
-    ctx.lineTo(ex, ey)
-    ctx.stroke()
-    ctx.setLineDash([])
-
-    // Pen tip dot on the end of active arc
-    ctx.beginPath()
-    ctx.arc(ex, ey, 4.5 * scale, 0, Math.PI * 2)
-    ctx.fillStyle = accent
-    ctx.fill()
-
-    // Radius pill badge
-    const badge = `R=${active.radiusMm}mm`
-    const bw = 66 * scale
-    const bh = 20 * scale
-    ctx.fillStyle = accent
-    ctx.beginPath()
-    ctx.roundRect(badgeX - bw / 2, badgeY - bh / 2, bw, bh, 6 * scale)
-    ctx.fill()
-    ctx.fillStyle = '#ffffff'
-    ctx.font = `700 ${Math.round(10 * scale)}px sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(badge, badgeX, badgeY + 0.5 * scale)
-    ctx.restore()
+  if (active) {
+    drawActiveCompassArm(ctx, active, cx, cy, drawRadius, plan, palette, scale)
   }
+}
+
+interface CompassBoardCache {
+  sizePx: number
+  cx: number
+  cy: number
+  boardRadius: number
+  drawRadius: number
+  scale: number
+  maxCap: number
+  baseAlpha: number
+  backdrop: HTMLCanvasElement
+  protractor: HTMLCanvasElement
+  drawnLayer: HTMLCanvasElement
+  drawnCtx: CanvasRenderingContext2D
+  drawnCount: number
+  basePaths: Array<Path2D | null>
+  ghostPaths: Array<Path2D | null>
+}
+
+const compassBoardCache = new WeakMap<CompassPlan, Map<string, CompassBoardCache>>()
+
+function createOffscreenCanvas(targetCanvas: HTMLCanvasElement, sizePx: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
+  if (typeof document === 'undefined' || typeof Path2D === 'undefined') return null
+  const canvas = document.createElement('canvas')
+  if (!canvas || canvas === targetCanvas) return null
+  canvas.width = sizePx
+  canvas.height = sizePx
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  return { canvas, ctx }
+}
+
+function getCompassBoardCache(
+  targetCanvas: HTMLCanvasElement,
+  plan: CompassPlan,
+  palette: CompassPalette,
+  sizePx: number,
+): CompassBoardCache | null {
+  const key = `${sizePx}|${palette.id}`
+  let byKey = compassBoardCache.get(plan)
+  if (byKey) {
+    const existing = byKey.get(key)
+    if (existing) return existing
+  }
+
+  const backdropRes = createOffscreenCanvas(targetCanvas, sizePx)
+  const protractorRes = createOffscreenCanvas(targetCanvas, sizePx)
+  const drawnRes = createOffscreenCanvas(targetCanvas, sizePx)
+  if (!backdropRes || !protractorRes || !drawnRes) return null
+
+  const cx = sizePx / 2
+  const cy = sizePx / 2
+  const boardRadius = sizePx * 0.455
+  const scale = boardRadius / 320
+  const drawRadius = boardRadius * 0.855
+  const maxCap = plan.algorithm === 'multi-center-intersect' ? 2.8 * scale : 4.5 * scale
+  const baseAlpha = plan.algorithm === 'multi-center-intersect' ? (palette.darkPaper ? 0.88 : 0.82) : 0.96
+
+  drawCompassBackdrop(backdropRes.ctx, cx, cy, boardRadius, palette, scale)
+  drawCompassProtractorRing(protractorRes.ctx, cx, cy, drawRadius, palette, scale)
+
+  // Persistent clip for incremental ribbon commits onto drawnLayer
+  drawnRes.ctx.save()
+  drawnRes.ctx.beginPath()
+  drawnRes.ctx.arc(cx, cy, drawRadius + 2 * scale, 0, Math.PI * 2)
+  drawnRes.ctx.clip()
+
+  const cache: CompassBoardCache = {
+    sizePx,
+    cx,
+    cy,
+    boardRadius,
+    drawRadius,
+    scale,
+    maxCap,
+    baseAlpha,
+    backdrop: backdropRes.canvas,
+    protractor: protractorRes.canvas,
+    drawnLayer: drawnRes.canvas,
+    drawnCtx: drawnRes.ctx,
+    drawnCount: 0,
+    basePaths: new Array<Path2D | null>(plan.steps.length).fill(null),
+    ghostPaths: new Array<Path2D | null>(plan.steps.length).fill(null),
+  }
+  if (!byKey) {
+    byKey = new Map()
+    compassBoardCache.set(plan, byKey)
+  }
+  byKey.set(key, cache)
+  return cache
+}
+
+function getBaseRibbonPath(cache: CompassBoardCache, plan: CompassPlan, idx: number): Path2D | null {
+  return cache.basePaths[idx] ??= buildArcRibbonPath(
+    plan.steps[idx],
+    cache.cx,
+    cache.cy,
+    cache.drawRadius,
+    plan,
+    cache.scale,
+    cache.maxCap,
+  )
+}
+
+function getGhostRibbonPath(cache: CompassBoardCache, plan: CompassPlan, idx: number): Path2D | null {
+  return cache.ghostPaths[idx] ??= buildArcRibbonPath(
+    plan.steps[idx],
+    cache.cx,
+    cache.cy,
+    cache.drawRadius,
+    plan,
+    cache.scale,
+    3.6 * cache.scale,
+  )
 }
 
 export function renderCompassBoard(
@@ -313,7 +518,85 @@ export function renderCompassBoard(
 ) {
   const ctx = getContext(canvas, sizePx, sizePx)
   ctx.clearRect(0, 0, sizePx, sizePx)
-  drawCompassScene(ctx, sizePx / 2, sizePx / 2, sizePx * 0.455, plan, palette, options)
+
+  const cache = getCompassBoardCache(canvas, plan, palette, sizePx)
+  if (!cache || typeof ctx.fill !== 'function' || typeof ctx.drawImage !== 'function') {
+    drawCompassScene(ctx, sizePx / 2, sizePx / 2, sizePx * 0.455, plan, palette, options)
+    return
+  }
+
+  const { cx, cy, drawRadius, scale } = cache
+  const totalSteps = plan.steps.length
+  const clampStep = Math.max(1, Math.min(totalSteps, Math.trunc(options.currentStep)))
+  const targetDrawn = options.mode === 'full' ? totalSteps : Math.max(0, clampStep - 1)
+
+  if (targetDrawn < cache.drawnCount) {
+    cache.drawnCtx.clearRect(0, 0, cache.sizePx, cache.sizePx)
+    cache.drawnCount = 0
+  }
+  if (targetDrawn > cache.drawnCount) {
+    const dCtx = cache.drawnCtx
+    dCtx.save()
+    dCtx.globalAlpha = cache.baseAlpha
+    for (let i = cache.drawnCount; i < targetDrawn; i++) {
+      const path = getBaseRibbonPath(cache, plan, i)
+      if (!path) continue
+      dCtx.fillStyle = plan.steps[i].color
+      dCtx.fill(path)
+    }
+    dCtx.restore()
+    cache.drawnCount = targetDrawn
+  }
+
+  ctx.drawImage(cache.backdrop, 0, 0)
+
+  const active = options.mode === 'guide' && totalSteps > 0 ? plan.steps[clampStep - 1] : null
+  const needsClippedOverlay = (options.mode === 'guide' && options.showGhost && totalSteps > targetDrawn) || Boolean(active)
+
+  if (options.mode === 'guide' && options.showGhost && totalSteps > targetDrawn) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, drawRadius + 2 * scale, 0, Math.PI * 2)
+    ctx.clip()
+    ctx.globalAlpha = palette.darkPaper ? 0.12 : 0.08
+    for (let i = targetDrawn; i < totalSteps; i++) {
+      const path = getGhostRibbonPath(cache, plan, i)
+      if (!path) continue
+      ctx.fillStyle = plan.steps[i].color
+      ctx.fill(path)
+    }
+    ctx.restore()
+  }
+
+  if (targetDrawn > 0) {
+    ctx.drawImage(cache.drawnLayer, 0, 0)
+  }
+
+  if (active) {
+    ctx.save()
+    if (needsClippedOverlay) {
+      ctx.beginPath()
+      ctx.arc(cx, cy, drawRadius + 2 * scale, 0, Math.PI * 2)
+      ctx.clip()
+    }
+    const accent = palette.darkPaper ? '#ff9d66' : '#c74b37'
+    ctx.globalAlpha = 1
+    const activePath = buildArcRibbonPath(active, cx, cy, drawRadius, plan, scale, 5.2 * scale, 1.35)
+    if (activePath) {
+      ctx.fillStyle = accent
+      ctx.fill(activePath)
+    }
+    ctx.restore()
+  }
+
+  if (options.showProtractor) {
+    ctx.drawImage(cache.protractor, 0, 0)
+    drawCompassCenterPins(ctx, cx, cy, drawRadius, plan, palette, scale, active?.centerId)
+  }
+
+  if (active) {
+    drawActiveCompassArm(ctx, active, cx, cy, drawRadius, plan, palette, scale)
+  }
 }
 
 export function compassSheetCanvas(

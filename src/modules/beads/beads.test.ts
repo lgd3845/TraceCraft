@@ -206,6 +206,44 @@ describe('canvas output contracts', () => {
     expect(texts).toContain(data.cells.find(Boolean))
     expect((await canvasPngBlob(canvas)).type).toBe('image/png')
   })
+  it('skips identical redraws and patches single painted cells incrementally', () => {
+    const createCanvasMock = () => {
+      const gradient = { addColorStop: vi.fn() }
+      const context = {
+        createLinearGradient: vi.fn(() => gradient), beginPath: vi.fn(), arc: vi.fn(), rect: vi.fn(), roundRect: vi.fn(), fill: vi.fn(), stroke: vi.fn(),
+        fillRect: vi.fn(), strokeRect: vi.fn(), clearRect: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), fillText: vi.fn(),
+        drawImage: vi.fn(), getImageData: vi.fn((_x: number, _y: number, width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) })),
+      }
+      return {
+        canvas: {
+          width: 0, height: 0, getContext: vi.fn(() => context),
+          toDataURL: vi.fn(() => 'data:image/png;base64,local'),
+          toBlob: vi.fn((callback: BlobCallback) => callback(new Blob(['png'], { type: 'image/png' }))),
+        } as unknown as HTMLCanvasElement,
+        context,
+      }
+    }
+    vi.stubGlobal('document', { createElement: vi.fn(() => createCanvasMock().canvas) })
+    const { canvas: target, context } = createCanvasMock()
+    const data = createExample('flower')
+
+    renderPreview(target, data, 'beads', true)
+    const initialClears = context.clearRect.mock.calls.length
+    const initialDraws = context.drawImage.mock.calls.length
+    expect(initialClears).toBe(1)
+    expect(initialDraws).toBeGreaterThan(0)
+
+    // Identical state is a no-op
+    renderPreview(target, data, 'beads', true)
+    expect(context.clearRect).toHaveBeenCalledTimes(initialClears)
+    expect(context.drawImage).toHaveBeenCalledTimes(initialDraws)
+
+    // Painting one cell clears & blits only that single cell
+    const painted = paintCell(data, 0, 'C03')
+    renderPreview(target, painted, 'beads', true)
+    expect(context.clearRect).toHaveBeenCalledTimes(initialClears + 1)
+    expect(context.drawImage).toHaveBeenCalledTimes(initialDraws + 1)
+  })
   it('switches between a round-hole bead preview and a numbered pixel preview', () => {
     const { context, canvas } = mockCanvas()
     const data = createExample('flower')

@@ -67,10 +67,10 @@ export default function BeadsStudio() {
   }, [])
 
   useEffect(() => {
-    if (!previewCanvas.current) return
+    if (fullscreenOpen || !previewCanvas.current) return
     try { renderPreview(previewCanvas.current, data, mode, showCodes); setPreviewError('') }
     catch (cause) { setPreviewError(messageFrom(cause, '预览暂时不可用，请换用支持 Canvas 的浏览器。')) }
-  }, [data, mode, showCodes])
+  }, [fullscreenOpen, data, mode, showCodes])
 
   useEffect(() => {
     if (!fullscreenOpen || !fullscreenCanvas.current) return

@@ -127,26 +127,139 @@ function drawPixels(context: CanvasRenderingContext2D, data: BeadsData, cell: nu
   for (let y = 0; y < data.rows; y++) context.fillText(String(y + 1), left - cell * 0.58, top + (y + 0.5) * cell)
 }
 
+interface PreviewRenderState {
+  columns: number
+  rows: number
+  mode: PreviewMode
+  showCodes: boolean
+  paletteKey: string
+  width: number
+  height: number
+  cells: string[]
+}
+
+const MAX_BEAD_SPRITE_CACHE = 256
+const beadSpriteCache = new Map<string, HTMLCanvasElement>()
+const previewStateCache = new WeakMap<HTMLCanvasElement, PreviewRenderState>()
+
+function getBeadSprite(cell: number, color: string, targetCanvas: HTMLCanvasElement): HTMLCanvasElement | null {
+  if (typeof document === 'undefined' || cell <= 0 || cell % 2 !== 0) return null
+  const key = `${cell}|${color}`
+  let cached = beadSpriteCache.get(key)
+  if (cached) {
+    if (cached === targetCanvas) return null
+    return cached
+  }
+  const sprite = document.createElement('canvas')
+  if (!sprite || sprite === targetCanvas) return null
+  sprite.width = cell
+  sprite.height = cell
+  const sCtx = sprite.getContext('2d')
+  if (!sCtx || typeof sCtx.createLinearGradient !== 'function') return null
+  const half = cell * 0.5
+  drawBead(sCtx, half, half, cell, color)
+  if (beadSpriteCache.size >= MAX_BEAD_SPRITE_CACHE) {
+    const oldest = beadSpriteCache.keys().next().value
+    if (oldest !== undefined) beadSpriteCache.delete(oldest)
+  }
+  beadSpriteCache.set(key, sprite)
+  return sprite
+}
+
+function paletteCacheKey(palette: BeadsData['palette']): string {
+  return palette.map(c => `${c.code}:${c.color}`).join('|')
+}
+
+function drawPreviewBeadCell(
+  context: CanvasRenderingContext2D,
+  targetCanvas: HTMLCanvasElement,
+  x: number,
+  y: number,
+  cell: number,
+  padding: number,
+  color: string | undefined,
+) {
+  const centerX = padding + (x + 0.5) * cell
+  const centerY = padding + (y + 0.5) * cell
+  context.fillStyle = '#dce0d3'
+  context.beginPath()
+  context.arc(centerX, centerY, 1.4, 0, Math.PI * 2)
+  context.fill()
+  if (!color) return
+  const sprite = getBeadSprite(cell, color, targetCanvas)
+  if (sprite && typeof context.drawImage === 'function') {
+    const half = cell * 0.5
+    context.drawImage(sprite, centerX - half, centerY - half)
+  } else {
+    drawBead(context, centerX, centerY, cell, color)
+  }
+}
+
 export function renderPreview(canvas: HTMLCanvasElement, data: BeadsData, mode: PreviewMode, showCodes: boolean) {
   const cell = PREVIEW_CELL
   const padding = previewPadding(mode)
-  canvas.width = data.columns * cell + padding * 2
-  canvas.height = data.rows * cell + padding * 2
+  const width = data.columns * cell + padding * 2
+  const height = data.rows * cell + padding * 2
+  const dimensionsChanged = canvas.width !== width || canvas.height !== height
+  if (dimensionsChanged) {
+    canvas.width = width
+    canvas.height = height
+  }
   const context = canvas.getContext('2d')
   if (!context) throw new Error('当前浏览器无法显示画布预览。')
-  context.clearRect(0, 0, canvas.width, canvas.height)
-  if (mode === 'pixels') { drawPixels(context, data, cell, padding, padding, showCodes); return }
-  const palette = new Map(data.palette.map(color => [color.code, color.color]))
-  for (let y = 0; y < data.rows; y++) {
-    for (let x = 0; x < data.columns; x++) {
-      const centerX = padding + (x + 0.5) * cell
-      const centerY = padding + (y + 0.5) * cell
-      context.fillStyle = '#dce0d3'
-      context.beginPath(); context.arc(centerX, centerY, 1.4, 0, Math.PI * 2); context.fill()
-      const color = palette.get(data.cells[y * data.columns + x])
-      if (color) drawBead(context, centerX, centerY, cell, color)
+
+  const palKey = paletteCacheKey(data.palette)
+  const prev = !dimensionsChanged ? previewStateCache.get(canvas) : undefined
+  if (
+    prev &&
+    prev.columns === data.columns &&
+    prev.rows === data.rows &&
+    prev.mode === mode &&
+    prev.showCodes === showCodes &&
+    prev.paletteKey === palKey &&
+    prev.cells.length === data.cells.length
+  ) {
+    const changed: number[] = []
+    for (let i = 0; i < data.cells.length; i++) {
+      if (data.cells[i] !== prev.cells[i]) changed.push(i)
+    }
+    if (changed.length === 0) return
+    if (mode === 'beads' && changed.length <= 64) {
+      const palette = new Map(data.palette.map(color => [color.code, color.color]))
+      for (const idx of changed) {
+        const code = data.cells[idx]
+        prev.cells[idx] = code
+        const x = idx % data.columns
+        const y = Math.floor(idx / data.columns)
+        context.clearRect(padding + x * cell, padding + y * cell, cell, cell)
+        drawPreviewBeadCell(context, canvas, x, y, cell, padding, palette.get(code))
+      }
+      return
     }
   }
+
+  context.clearRect(0, 0, canvas.width, canvas.height)
+  if (mode === 'pixels') {
+    drawPixels(context, data, cell, padding, padding, showCodes)
+  } else {
+    const palette = new Map(data.palette.map(color => [color.code, color.color]))
+    for (let y = 0; y < data.rows; y++) {
+      for (let x = 0; x < data.columns; x++) {
+        drawPreviewBeadCell(context, canvas, x, y, cell, padding, palette.get(data.cells[y * data.columns + x]))
+      }
+    }
+  }
+
+  previewStateCache.set(canvas, {
+    columns: data.columns,
+    rows: data.rows,
+    mode,
+    showCodes,
+    paletteKey: palKey,
+    width,
+    height,
+    cells: data.cells.slice(),
+  })
 }
 
 export function thumbnailPng(data: BeadsData): string {
