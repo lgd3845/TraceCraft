@@ -284,7 +284,7 @@ export default function WireCraftStudio() {
     const submittedPalette = generationJob.payload.palette
     const runner = (workerRunnerRef.current ??= new PersistentWorkerRunner(
       () => new Worker(new URL('./stringArt.worker.ts', import.meta.url), { type: 'module' }),
-      { cooperativeCancel: true },
+      { cooperativeCancel: true, cachePhotoSource: true },
     ))
     runner.submit(generationJob.payload, {
       onSuccess: nextPlan => {

@@ -292,6 +292,7 @@ export default function CompassStudio() {
     const submittedPalette = generationJob.payload.palette
     const runner = (workerRunnerRef.current ??= new PersistentWorkerRunner(
       () => new Worker(new URL('./compass.worker.ts', import.meta.url), { type: 'module' }),
+      { cachePhotoSource: true },
     ))
     runner.submit(generationJob.payload, {
       onSuccess: nextPlan => {

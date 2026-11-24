@@ -23,14 +23,24 @@ export interface WorkerJobCallbacks<TResult> {
   onError: (message: string) => void
 }
 
+export interface KeyedPhotoPayload {
+  kind: 'photo'
+  key: string
+  width: number
+  height: number
+  rgba?: Uint8ClampedArray
+}
+
 export interface PersistentWorkerOptions {
   cooperativeCancel?: boolean
+  cachePhotoSource?: boolean
 }
 
 interface InFlightJob<TResult> {
   jobId: number
   cancelled: boolean
   cancelSent: boolean
+  photoKey: string | null
   callbacks: WorkerJobCallbacks<TResult>
 }
 
@@ -38,6 +48,43 @@ interface PendingJob<TPayload, TResult> {
   jobId: number
   payload: TPayload
   callbacks: WorkerJobCallbacks<TResult>
+}
+
+export class WorkerPhotoCache {
+  private cachedKey = ''
+  private cachedRgba: Uint8ClampedArray | null = null
+  private cachedWidth = 0
+  private cachedHeight = 0
+
+  resolve(source: KeyedPhotoPayload): { rgba: Uint8ClampedArray; width: number; height: number } {
+    if (source.rgba) {
+      this.cachedKey = source.key
+      this.cachedRgba = source.rgba
+      this.cachedWidth = source.width
+      this.cachedHeight = source.height
+      return { rgba: source.rgba, width: source.width, height: source.height }
+    }
+    if (source.key === this.cachedKey && this.cachedRgba) {
+      return { rgba: this.cachedRgba, width: this.cachedWidth, height: this.cachedHeight }
+    }
+    throw new Error('源图缓存已失效，请重新上传或调整取景。')
+  }
+}
+
+function extractPhotoSource(payload: unknown): KeyedPhotoPayload | null {
+  if (!payload || typeof payload !== 'object') return null
+  const src = (payload as { source?: unknown }).source
+  if (!src || typeof src !== 'object') return null
+  const candidate = src as Record<string, unknown>
+  if (
+    candidate.kind !== 'photo' ||
+    typeof candidate.key !== 'string' ||
+    typeof candidate.width !== 'number' ||
+    typeof candidate.height !== 'number'
+  ) {
+    return null
+  }
+  return candidate as unknown as KeyedPhotoPayload
 }
 
 export function hasOpaquePixels(rgba: ArrayLike<number>, minAlpha = 16): boolean {
@@ -54,15 +101,18 @@ export function hasOpaquePixels(rgba: ArrayLike<number>, minAlpha = 16): boolean
 export class PersistentWorkerRunner<TPayload, TResult> {
   private readonly createWorker: () => Worker
   private readonly cooperativeCancel: boolean
+  private readonly cachePhotoSource: boolean
   private worker: Worker | null = null
   private nextJobId = 0
   private inFlight: InFlightJob<TResult> | null = null
   private pending: PendingJob<TPayload, TResult> | null = null
+  private confirmedPhotoKey = ''
   private disposed = false
 
   constructor(createWorker: () => Worker, options?: PersistentWorkerOptions) {
     this.createWorker = createWorker
     this.cooperativeCancel = Boolean(options?.cooperativeCancel)
+    this.cachePhotoSource = Boolean(options?.cachePhotoSource)
   }
 
   submit(payload: TPayload, callbacks: WorkerJobCallbacks<TResult>): number {
@@ -104,9 +154,19 @@ export class PersistentWorkerRunner<TPayload, TResult> {
         return
       }
       this.inFlight = null
-      if (!active.cancelled && !this.disposed && !(data && data.cancelled === true)) {
-        if (data && typeof data.error === 'string') {
-          active.callbacks.onError(data.error)
+      const isError = Boolean(data && typeof data.error === 'string')
+      const isCancelled = Boolean(data && data.cancelled === true)
+      const hasResult = Boolean(
+        data &&
+          (('result' in data && data.result !== undefined) ||
+            ('plan' in data && data.plan !== undefined)),
+      )
+      if (active.photoKey && !isError && (hasResult || isCancelled)) {
+        this.confirmedPhotoKey = active.photoKey
+      }
+      if (!active.cancelled && !this.disposed && !isCancelled) {
+        if (isError) {
+          active.callbacks.onError(data!.error as string)
         } else if (data && 'result' in data && data.result !== undefined) {
           active.callbacks.onSuccess(data.result as TResult)
         } else if (data && 'plan' in data && data.plan !== undefined) {
@@ -143,13 +203,27 @@ export class PersistentWorkerRunner<TPayload, TResult> {
   private dispatch(job: PendingJob<TPayload, TResult>) {
     try {
       const worker = this.ensureWorker()
+      const photoSource = this.cachePhotoSource ? extractPhotoSource(job.payload) : null
+      const photoKey = photoSource ? photoSource.key : null
+      const wirePayload = photoSource && photoSource.rgba && photoSource.key === this.confirmedPhotoKey
+        ? ({
+            ...(job.payload as Record<string, unknown>),
+            source: {
+              kind: 'photo',
+              key: photoSource.key,
+              width: photoSource.width,
+              height: photoSource.height,
+            },
+          } as unknown as TPayload)
+        : job.payload
       this.inFlight = {
         jobId: job.jobId,
         cancelled: false,
         cancelSent: false,
+        photoKey,
         callbacks: job.callbacks,
       }
-      worker.postMessage({ jobId: job.jobId, payload: job.payload } satisfies WorkerRequestEnvelope<TPayload>)
+      worker.postMessage({ jobId: job.jobId, payload: wirePayload } satisfies WorkerRequestEnvelope<TPayload>)
     } catch (cause) {
       this.inFlight = null
       this.terminateWorker()
@@ -178,6 +252,7 @@ export class PersistentWorkerRunner<TPayload, TResult> {
   }
 
   private terminateWorker() {
+    this.confirmedPhotoKey = ''
     if (this.worker) {
       this.worker.onmessage = null
       this.worker.onerror = null

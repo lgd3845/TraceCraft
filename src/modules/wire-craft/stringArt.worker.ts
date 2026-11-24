@@ -1,3 +1,4 @@
+import { WorkerPhotoCache } from '../../lib/persistentWorker'
 import type { WorkerIncomingEnvelope, WorkerResponseEnvelope } from '../../lib/persistentWorker'
 import { createExampleLayers, generateStringArtAsync, rgbaToPhotoLayers } from './stringArt'
 import type {
@@ -13,7 +14,7 @@ import type {
 
 export type StringArtWorkerSource =
   | { kind: 'example'; id: StringExampleId }
-  | { kind: 'photo'; rgba: Uint8ClampedArray; width: number; height: number; key: string }
+  | { kind: 'photo'; rgba?: Uint8ClampedArray; width: number; height: number; key: string }
 
 export interface StringArtWorkerRequest {
   source: StringArtWorkerSource
@@ -30,6 +31,7 @@ export interface StringArtWorkerRequest {
   autoInvert: boolean
 }
 
+const photoCache = new WorkerPhotoCache()
 let cachedLayerKey = ''
 let cachedLayers: StringLayerInput[] | null = null
 let activeJobId = 0
@@ -69,6 +71,7 @@ self.onmessage = async (event: MessageEvent<WorkerIncomingEnvelope<StringArtWork
   abortedJobId = 0
 
   try {
+    const resolvedPhoto = payload.source.kind === 'photo' ? photoCache.resolve(payload.source) : null
     const sourceKey = payload.source.kind === 'example' ? `ex:${payload.source.id}` : payload.source.key
     const layerKey = `${sourceKey}|${payload.mapSize}|${payload.palette.id}|${payload.usePhotoColors ? 1 : 0}|${payload.autoInvert ? 1 : 0}|${payload.colorWeaveMode}|${payload.contrastMode}`
 
@@ -85,9 +88,9 @@ self.onmessage = async (event: MessageEvent<WorkerIncomingEnvelope<StringArtWork
             payload.contrastMode,
           )
         : rgbaToPhotoLayers(
-            payload.source.rgba,
-            payload.source.width,
-            payload.source.height,
+            resolvedPhoto!.rgba,
+            resolvedPhoto!.width,
+            resolvedPhoto!.height,
             payload.mapSize,
             payload.palette,
             payload.usePhotoColors,

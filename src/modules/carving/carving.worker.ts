@@ -1,3 +1,4 @@
+import { WorkerPhotoCache } from '../../lib/persistentWorker'
 import type { WorkerRequestEnvelope, WorkerResponseEnvelope } from '../../lib/persistentWorker'
 import { createCarvingExampleField, generateCarvingPlan, rgbaToCarvingField } from './carving'
 import type {
@@ -12,7 +13,7 @@ import type {
 
 export type CarvingWorkerSource =
   | { kind: 'example'; id: CarvingExampleId }
-  | { kind: 'photo'; rgba: Uint8ClampedArray; width: number; height: number; key: string }
+  | { kind: 'photo'; rgba?: Uint8ClampedArray; width: number; height: number; key: string }
 
 export interface CarvingWorkerRequest {
   source: CarvingWorkerSource
@@ -23,12 +24,14 @@ export interface CarvingWorkerRequest {
   contrastMode: CarvingContrastMode
 }
 
+const photoCache = new WorkerPhotoCache()
 let cachedFieldKey = ''
 let cachedField: CarvingFieldInput | null = null
 
 self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<CarvingWorkerRequest>>) => {
   const { jobId, payload } = event.data
   try {
+    const resolvedPhoto = payload.source.kind === 'photo' ? photoCache.resolve(payload.source) : null
     const sourceKey = payload.source.kind === 'example' ? `ex:${payload.source.id}` : payload.source.key
     const fieldKey = `${sourceKey}|${payload.gridSize}|${payload.contrastMode}`
 
@@ -39,9 +42,9 @@ self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<CarvingWorkerRequest
       field = payload.source.kind === 'example'
         ? createCarvingExampleField(payload.source.id, payload.gridSize, payload.contrastMode, false)
         : rgbaToCarvingField(
-            payload.source.rgba,
-            payload.source.width,
-            payload.source.height,
+            resolvedPhoto!.rgba,
+            resolvedPhoto!.width,
+            resolvedPhoto!.height,
             payload.gridSize,
             false,
             payload.contrastMode,

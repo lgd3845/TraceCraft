@@ -283,6 +283,7 @@ export default function CarvingStudio() {
     const submittedTitle = titleRef.current
     const runner = (workerRunnerRef.current ??= new PersistentWorkerRunner(
       () => new Worker(new URL('./carving.worker.ts', import.meta.url), { type: 'module' }),
+      { cachePhotoSource: true },
     ))
     runner.submit(generationJob.payload, {
       onSuccess: nextPlan => {

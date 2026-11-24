@@ -1,3 +1,4 @@
+import { WorkerPhotoCache } from '../../lib/persistentWorker'
 import type { WorkerRequestEnvelope, WorkerResponseEnvelope } from '../../lib/persistentWorker'
 import {
   createEmbroideryExampleRgba,
@@ -13,7 +14,7 @@ import type {
 
 export type EmbroideryWorkerSource =
   | { kind: 'example'; id: EmbroideryExampleId }
-  | { kind: 'photo'; rgba: Uint8ClampedArray; width: number; height: number; key: string }
+  | { kind: 'photo'; rgba?: Uint8ClampedArray; width: number; height: number; key: string }
 
 export interface EmbroideryWorkerRequest {
   source: EmbroideryWorkerSource
@@ -23,12 +24,14 @@ export interface EmbroideryWorkerRequest {
   hoopSizeCm: number
 }
 
+const photoCache = new WorkerPhotoCache()
 let cachedGridKey = ''
 let cachedGrid: QuantizedEmbroideryGrid | null = null
 
 self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<EmbroideryWorkerRequest>>) => {
   const { jobId, payload } = event.data
   try {
+    const resolvedPhoto = payload.source.kind === 'photo' ? photoCache.resolve(payload.source) : null
     const sourceKey = payload.source.kind === 'example' ? `ex:${payload.source.id}` : payload.source.key
     const gridKey = `${sourceKey}|${payload.gridSize}|${payload.maxColors}`
 
@@ -38,7 +41,7 @@ self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<EmbroideryWorkerRequ
     } else {
       const sample = payload.source.kind === 'example'
         ? createEmbroideryExampleRgba(payload.source.id, 112)
-        : payload.source
+        : resolvedPhoto!
       grid = quantizeImageToEmbroideryGrid(
         sample.rgba,
         sample.width,
