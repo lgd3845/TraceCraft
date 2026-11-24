@@ -302,6 +302,26 @@ describe('shared-coverage and free-contour string art engine', () => {
     expect(yields).toBe(2)
   })
 
+  it('maintains exact loss & coverage parity on high-darkness ring plans and tiny map fallbacks', () => {
+    const layers = createExampleLayers('portrait', DEFAULT_STRING_MAP_SIZE, STRING_PALETTES[0], 'mono')
+    const plan = generateStringArt(layers, DEFAULT_STRING_MAP_SIZE, 160, 500, 20, 'ring', STRING_PALETTES[0], 0.08)
+    const target = layers[0].map
+    const importance = layers[0].importance!
+    const field = new Float32Array(DEFAULT_STRING_MAP_SIZE * DEFAULT_STRING_MAP_SIZE)
+    for (const step of plan.steps) {
+      const footprint = threadFootprint(plan.pegs[step.from - 1], plan.pegs[step.to - 1], DEFAULT_STRING_MAP_SIZE)
+      expect(threadGain(target, field, importance, footprint, plan.threadDarkness)).toBeGreaterThan(0)
+      applyThread(field, footprint, plan.threadDarkness)
+    }
+    expect(stringArtCoverage(plan)[0]).toEqual(field)
+
+    // Tiny mapSize triggers non-fast-ring bounds fallback safely without OOB reads
+    const tiny = new Float32Array(8 * 8).fill(0.8)
+    const tinyPlan = generateStringArt(tiny, 8, 16, 20, 20, 'ring', STRING_PALETTES[0], 0.08)
+    expect(tinyPlan.steps.length).toBeGreaterThan(0)
+    expect(stringArtCoverage(tinyPlan)[0].length).toBe(64)
+  })
+
   it('uses additive coverage rather than losing line strength in already dark details', () => {
     const footprint = { indices: new Int32Array([0, 1]), coverage: new Float32Array([1, 0.5]) }
     const field = new Float32Array(2)

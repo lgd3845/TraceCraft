@@ -831,8 +831,10 @@ interface RingGeometryEntry {
   mapSize: number
   pegCount: number
   pegs: StringPeg[]
-  footprints: Array<ThreadFootprint | undefined>
+  pegX: Int32Array
+  pegY: Int32Array
   dists: Float64Array
+  allInBounds: boolean
 }
 
 const MAX_RING_GEOMETRY_CACHE = 4
@@ -841,7 +843,7 @@ const ringGeometryCache = new Map<string, RingGeometryEntry>()
 function ringPairIndex(pegCount: number, a: number, b: number): number {
   const lo = a < b ? a : b
   const hi = a < b ? b : a
-  return (lo * (2 * pegCount - lo - 1)) / 2 + (hi - lo - 1)
+  return ((lo * (2 * pegCount - lo - 1)) >> 1) + (hi - lo - 1)
 }
 
 function pegsMatch(a: readonly StringPeg[], b: readonly StringPeg[]): boolean {
@@ -866,13 +868,26 @@ function getRingGeometry(mapSize: number, pegCount: number, pegs: readonly Strin
   if (!pegsMatch(canonical, pegs)) return null
 
   const totalPairs = Math.max(1, (pegCount * (pegCount - 1)) / 2)
+  const pegX = new Int32Array(pegCount)
+  const pegY = new Int32Array(pegCount)
+  let allInBounds = mapSize >= 3
+  for (let i = 0; i < pegCount; i++) {
+    const px = canonical[i].x
+    const py = canonical[i].y
+    pegX[i] = px
+    pegY[i] = py
+    if (px < 1 || py < 1 || px > mapSize - 2 || py > mapSize - 2) {
+      allInBounds = false
+    }
+  }
+
   const dists = new Float64Array(totalPairs)
   for (let a = 0; a < pegCount; a++) {
-    const ax = canonical[a].x
-    const ay = canonical[a].y
-    const rowBase = (a * (2 * pegCount - a - 1)) / 2 - a - 1
+    const ax = pegX[a]
+    const ay = pegY[a]
+    const rowBase = ((a * (2 * pegCount - a - 1)) >> 1) - a - 1
     for (let b = a + 1; b < pegCount; b++) {
-      dists[rowBase + b] = Math.hypot(canonical[b].x - ax, canonical[b].y - ay)
+      dists[rowBase + b] = Math.hypot(pegX[b] - ax, pegY[b] - ay)
     }
   }
 
@@ -881,8 +896,10 @@ function getRingGeometry(mapSize: number, pegCount: number, pegs: readonly Strin
     mapSize,
     pegCount,
     pegs: canonical,
-    footprints: new Array<ThreadFootprint | undefined>(totalPairs),
+    pegX,
+    pegY,
     dists,
+    allInBounds,
   }
   if (ringGeometryCache.size >= MAX_RING_GEOMETRY_CACHE) {
     const oldest = ringGeometryCache.keys().next().value
@@ -892,9 +909,66 @@ function getRingGeometry(mapSize: number, pegCount: number, pegs: readonly Strin
   return entry
 }
 
-function getCachedRingFootprint(entry: RingGeometryEntry, a: number, b: number): ThreadFootprint {
-  const idx = ringPairIndex(entry.pegCount, a, b)
-  return entry.footprints[idx] ??= threadFootprint(entry.pegs[a], entry.pegs[b], entry.mapSize)
+function applyLineOnTheFly(
+  field: Float32Array,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  mapSize: number,
+  darkness: number,
+) {
+  let x0 = ax
+  let y0 = ay
+  let x1 = bx
+  let y1 = by
+  const steep = Math.abs(y1 - y0) > Math.abs(x1 - x0)
+  if (steep) {
+    let t = x0; x0 = y0; y0 = t
+    t = x1; x1 = y1; y1 = t
+  }
+  if (x0 > x1) {
+    let t = x0; x0 = x1; x1 = t
+    t = y0; y0 = y1; y1 = t
+  }
+  const gradient = (y1 - y0) / (x1 - x0 || 1)
+  if (steep) {
+    for (let x = x0; x <= x1; x++) {
+      const y = y0 + (x - x0) * gradient
+      const low = Math.floor(y)
+      const fraction = y - low
+      const p0 = x * mapSize + low
+      const w0 = Math.fround(1 - fraction)
+      if (w0 > 0) {
+        const next = field[p0] + darkness * w0
+        field[p0] = next < 1 ? next : 1
+      }
+      const w1 = Math.fround(fraction)
+      if (w1 > 0) {
+        const p1 = p0 + 1
+        const next = field[p1] + darkness * w1
+        field[p1] = next < 1 ? next : 1
+      }
+    }
+    return
+  }
+  for (let x = x0; x <= x1; x++) {
+    const y = y0 + (x - x0) * gradient
+    const low = Math.floor(y)
+    const fraction = y - low
+    const p0 = low * mapSize + x
+    const w0 = Math.fround(1 - fraction)
+    if (w0 > 0) {
+      const next = field[p0] + darkness * w0
+      field[p0] = next < 1 ? next : 1
+    }
+    const w1 = Math.fround(fraction)
+    if (w1 > 0) {
+      const p1 = p0 + mapSize
+      const next = field[p1] + darkness * w1
+      field[p1] = next < 1 ? next : 1
+    }
+  }
 }
 
 export function applyThread(field: Float32Array, footprint: ThreadFootprint, darkness: number) {
@@ -925,14 +999,25 @@ export function advanceStringArtCoverage(
   const end = Math.min(plan.steps.length, toStep)
   if (start >= end) return
   const ringEntry = plan.layoutMode === 'ring' ? getRingGeometry(plan.mapSize, plan.pegCount, plan.pegs) : null
+  if (ringEntry?.allInBounds) {
+    const { pegX, pegY } = ringEntry
+    const mapSize = plan.mapSize
+    const darkness = plan.threadDarkness
+    for (let i = start; i < end; i++) {
+      const step = plan.steps[i]
+      const field = fields[layerIndexMap.get(step.layerIndex)!]
+      const a = step.from - 1
+      const b = step.to - 1
+      applyLineOnTheFly(field, pegX[a], pegY[a], pegX[b], pegY[b], mapSize, darkness)
+    }
+    return
+  }
   for (let i = start; i < end; i++) {
     const step = plan.steps[i]
     const field = fields[layerIndexMap.get(step.layerIndex)!]
     const a = step.from - 1
     const b = step.to - 1
-    const footprint = ringEntry
-      ? getCachedRingFootprint(ringEntry, a, b)
-      : threadFootprint(plan.pegs[a], plan.pegs[b], plan.mapSize)
+    const footprint = threadFootprint(plan.pegs[a], plan.pegs[b], plan.mapSize)
     applyThread(field, footprint, plan.threadDarkness)
   }
 }
@@ -1209,12 +1294,23 @@ function createStringArtSolver(
     return cached
   }
 
-  const localFootprintCache = ringEntry ? null : new Array<ThreadFootprint | undefined>(totalPairs)
+  const ringDists = ringEntry?.dists ?? null
+  const canFastRing = Boolean(isRing && ringEntry?.allInBounds)
+  const ringPegX = ringEntry?.pegX ?? null
+  const ringPegY = ringEntry?.pegY ?? null
+  const unsatThreshold = 1 - threadDarkness
+  const localFootprintCache = contourBuild || !canFastRing ? (ringEntry ? null : new Array<ThreadFootprint | undefined>(totalPairs)) : null
   const getFootprint = (a: number, b: number) => {
-    if (ringEntry) return getCachedRingFootprint(ringEntry, a, b)
     const index = pairIndex(a, b)
     return localFootprintCache![index] ??= threadFootprint(pegs[a], pegs[b], mapSize)
   }
+
+  let ringUpperBound: Float64Array | null = null
+  let ringLastScore: Float64Array | null = null
+  let ringLastSlack: Float64Array | null = null
+  let globalSlack = 0
+  const orderCand = canFastRing ? new Int32Array(actualPegCount) : null
+  const orderIdx = canFastRing ? new Int32Array(actualPegCount) : null
 
   const loopAdj: Array<Array<{ from: number; to: number }>> = layersInput.map(() => [])
   if (contourBuild) {
@@ -1309,7 +1405,6 @@ function createStringArtSolver(
   let subBudget = 0
   let w = 0
 
-  const ringDists = ringEntry?.dists ?? null
   const halfWeight = lineFade * 0.5
 
   const advance = (maxWeaveSteps: number): boolean => {
@@ -1334,6 +1429,12 @@ function createStringArtSolver(
             const base = i << 2
             packed[base + 1] = layer.map[i]
             packed[base + 2] = importanceMap[i]
+          }
+          if (canFastRing) {
+            ringUpperBound = new Float64Array(totalPairs).fill(Infinity)
+            ringLastScore = new Float64Array(totalPairs).fill(Infinity)
+            ringLastSlack = new Float64Array(totalPairs)
+            globalSlack = 0
           }
         } else {
           residual = new Float32Array(layer.map.length)
@@ -1446,139 +1547,394 @@ function createStringArtSolver(
         let iter = w
         let marked = markedLayerChange
 
-        const pickChord = (allowUsed: boolean) => {
-          let bestNext = -1
-          let bestScore = -Infinity
-          let bestLine: Int32Array | null = null
+        if (
+          canFastRing &&
+          pck &&
+          rUses &&
+          ringPegX &&
+          ringPegY &&
+          ringDists &&
+          ringUpperBound &&
+          ringLastScore &&
+          ringLastSlack &&
+          orderCand &&
+          orderIdx &&
+          aPegs.length === pegCountVal
+        ) {
+          const rPegX = ringPegX
+          const rPegY = ringPegY
+          const rDists = ringDists
+          const ubArr = ringUpperBound
+          const lsArr = ringLastScore
+          const lSlackArr = ringLastSlack
+          const oCand = orderCand
+          const oIdx = orderIdx
+          const dVal = threadDarkness
+          const unsat = unsatThreshold
+          const mapSz = mapSize
+          const rowStep4 = mapSz << 2
 
-          if (isRing && pck && rUses) {
-            const curX = pegs[cur].x
-            const curY = pegs[cur].y
+          const evalFastRingChord = (cx: number, cy: number, cand: number, pIdx: number): number => {
+            let x0 = cx
+            let y0 = cy
+            let x1 = rPegX[cand]
+            let y1 = rPegY[cand]
+            const steep = Math.abs(y1 - y0) > Math.abs(x1 - x0)
+            if (steep) {
+              let t = x0; x0 = y0; y0 = t
+              t = x1; x1 = y1; y1 = t
+            }
+            if (x0 > x1) {
+              let t = x0; x0 = x1; x1 = t
+              t = y0; y0 = y1; y1 = t
+            }
+            const grad = (y1 - y0) / (x1 - x0 || 1)
+            let gain = 0
+            let posGain = 0
+            if (steep) {
+              for (let x = x0; x <= x1; x++) {
+                const y = y0 + (x - x0) * grad
+                const low = Math.floor(y)
+                const frac = y - low
+                const b0 = (x * mapSz + low) << 2
+                const w0 = Math.fround(1 - frac)
+                if (w0 > 0) {
+                  const f = pck[b0]
+                  if (f < 1) {
+                    const dc = dVal * w0
+                    const delta = f <= unsat ? dc : (dc < 1 - f ? dc : 1 - f)
+                    const g = pck[b0 + 2] * delta * (2 * (pck[b0 + 1] - f) - delta)
+                    gain += g
+                    if (g > 0) posGain += g
+                  }
+                }
+                const w1 = Math.fround(frac)
+                if (w1 > 0) {
+                  const b1 = b0 + 4
+                  const f = pck[b1]
+                  if (f < 1) {
+                    const dc = dVal * w1
+                    const delta = f <= unsat ? dc : (dc < 1 - f ? dc : 1 - f)
+                    const g = pck[b1 + 2] * delta * (2 * (pck[b1 + 1] - f) - delta)
+                    gain += g
+                    if (g > 0) posGain += g
+                  }
+                }
+              }
+            } else {
+              for (let x = x0; x <= x1; x++) {
+                const y = y0 + (x - x0) * grad
+                const low = Math.floor(y)
+                const frac = y - low
+                const b0 = (low * mapSz + x) << 2
+                const w0 = Math.fround(1 - frac)
+                if (w0 > 0) {
+                  const f = pck[b0]
+                  if (f < 1) {
+                    const dc = dVal * w0
+                    const delta = f <= unsat ? dc : (dc < 1 - f ? dc : 1 - f)
+                    const g = pck[b0 + 2] * delta * (2 * (pck[b0 + 1] - f) - delta)
+                    gain += g
+                    if (g > 0) posGain += g
+                  }
+                }
+                const w1 = Math.fround(frac)
+                if (w1 > 0) {
+                  const b1 = b0 + rowStep4
+                  const f = pck[b1]
+                  if (f < 1) {
+                    const dc = dVal * w1
+                    const delta = f <= unsat ? dc : (dc < 1 - f ? dc : 1 - f)
+                    const g = pck[b1 + 2] * delta * (2 * (pck[b1 + 1] - f) - delta)
+                    gain += g
+                    if (g > 0) posGain += g
+                  }
+                }
+              }
+            }
+            const dist = rDists[pIdx]
+            const score = gain / dist
+            ubArr[pIdx] = posGain / dist + 1e-11
+            lsArr[pIdx] = score
+            lSlackArr[pIdx] = globalSlack
+            return score
+          }
+
+          const updateFastPixel = (b: number, weight: number) => {
+            const fOld = pck[b]
+            const nx = fOld + dVal * weight
+            const fNew = nx < 1 ? nx : 1
+            pck[b] = fNew
+            if (fNew > unsat && fNew > fOld) {
+              const tVal = pck[b + 1]
+              const dOld = 1 - fOld < dVal ? 1 - fOld : dVal
+              const dNew = 1 - fNew
+              const gOld = pck[b + 2] * dOld * (2 * (tVal - fOld) - dOld)
+              const gNew = pck[b + 2] * dNew * (2 * (tVal - fNew) - dNew)
+              if (gNew > gOld) globalSlack += gNew - gOld
+            }
+          }
+
+          while (iter < sBudget && steps.length < safeSteps) {
+            if (ran >= stepLimit) {
+              current = cur
+              previous = prev
+              recentPos = rPos
+              w = iter
+              markedLayerChange = marked
+              return false
+            }
+
+            const cx = rPegX[cur]
+            const cy = rPegY[cur]
+            const curRowBase = ((cur * (2 * pegCountVal - cur - 1)) >> 1) - cur - 1
+            let bestNext = -1
+            let bestScore = -Infinity
+            let h1 = -1
+            let h1s = -Infinity
+            let h1p = 0
+            let h2 = -1
+            let h2s = -Infinity
+            let h2p = 0
+            let count = 0
+
+            for (let cand = 0; cand < pegCountVal; cand++) {
+              if (cand === cur || cand === prev) continue
+              const diff = cand > cur ? cand - cur : cur - cand
+              if ((diff < pegCountVal - diff ? diff : pegCountVal - diff) < mSpan) continue
+              if (rCount[cand] > 0) continue
+              const pIdx = cand > cur
+                ? curRowBase + cand
+                : ((cand * (2 * pegCountVal - cand - 1)) >> 1) + (cur - cand - 1)
+              if (rUses[pIdx] >= 3) continue
+              oCand[count] = cand
+              oIdx[count] = pIdx
+              count++
+              const ls = lsArr[pIdx]
+              if (ls < Infinity) {
+                if (ls > h1s) {
+                  h2 = h1; h2s = h1s; h2p = h1p
+                  h1 = cand; h1s = ls; h1p = pIdx
+                } else if (ls > h2s) {
+                  h2 = cand; h2s = ls; h2p = pIdx
+                }
+              }
+            }
+
+            if (h1 >= 0) {
+              bestScore = evalFastRingChord(cx, cy, h1, h1p)
+              bestNext = h1
+            }
+            if (h2 >= 0) {
+              const b2a = ubArr[h2p]
+              const b2b = lsArr[h2p] + (globalSlack - lSlackArr[h2p]) / rDists[h2p] + 1e-11
+              if ((b2a < b2b ? b2a : b2b) >= bestScore) {
+                const s = evalFastRingChord(cx, cy, h2, h2p)
+                if (s > bestScore || (s === bestScore && h2 < bestNext)) {
+                  bestScore = s
+                  bestNext = h2
+                }
+              }
+            }
+
+            for (let i = 0; i < count; i++) {
+              const cand = oCand[i]
+              if (cand === h1 || cand === h2) continue
+              const pIdx = oIdx[i]
+              const ub = ubArr[pIdx]
+              const ls = lsArr[pIdx]
+              let bound = ub
+              if (ls < Infinity) {
+                const sb = ls + (globalSlack - lSlackArr[pIdx]) / rDists[pIdx] + 1e-11
+                if (sb < bound) bound = sb
+              }
+              if (bound < bestScore) continue
+              const s = evalFastRingChord(cx, cy, cand, pIdx)
+              if (s > bestScore || (s === bestScore && cand < bestNext)) {
+                bestScore = s
+                bestNext = cand
+              }
+            }
+
+            if (bestNext < 0 || bestScore <= 0) break
+
+            const lo = cur < bestNext ? cur : bestNext
+            const hi = cur < bestNext ? bestNext : cur
+            rUses[((lo * (2 * pegCountVal - lo - 1)) >> 1) + (hi - lo - 1)]++
+
+            let x0 = cx
+            let y0 = cy
+            let x1 = rPegX[bestNext]
+            let y1 = rPegY[bestNext]
+            const steep = Math.abs(y1 - y0) > Math.abs(x1 - x0)
+            if (steep) {
+              let t = x0; x0 = y0; y0 = t
+              t = x1; x1 = y1; y1 = t
+            }
+            if (x0 > x1) {
+              let t = x0; x0 = x1; x1 = t
+              t = y0; y0 = y1; y1 = t
+            }
+            const grad = (y1 - y0) / (x1 - x0 || 1)
+            const step4 = steep ? 4 : rowStep4
+            for (let x = x0; x <= x1; x++) {
+              const y = y0 + (x - x0) * grad
+              const low = Math.floor(y)
+              const frac = y - low
+              const b0 = (steep ? x * mapSz + low : low * mapSz + x) << 2
+              const w0 = Math.fround(1 - frac)
+              if (w0 > 0) updateFastPixel(b0, w0)
+              const w1 = Math.fround(frac)
+              if (w1 > 0) updateFastPixel(b0 + step4, w1)
+            }
+
+            recordStep(cur, bestNext, l, '光影走线', !marked)
+            marked = true
+            const evicted = rRing[rPos]
+            if (evicted >= 0) rCount[evicted]--
+            rRing[rPos] = cur
+            rCount[cur]++
+            rPos = (rPos + 1) % 12
+            prev = cur
+            cur = bestNext
+            iter++
+            ran++
+          }
+        } else {
+          const pickChord = (allowUsed: boolean) => {
+            let bestNext = -1
+            let bestScore = -Infinity
+            let bestLine: Int32Array | null = null
+
+            if (isRing && pck && rUses) {
+              const curX = pegs[cur].x
+              const curY = pegs[cur].y
+
+              for (let ci = 0; ci < aPegs.length; ci++) {
+                const cand = aPegs[ci]
+                if (cand === cur || cand === prev) continue
+                const diff = Math.abs(cand - cur)
+                if ((diff < pegCountVal - diff ? diff : pegCountVal - diff) < mSpan) continue
+                if (!allowUsed && rCount[cand] > 0) continue
+                const pIdx = pairIndex(cur, cand)
+                if (rUses[pIdx] >= 3) continue
+
+                const footprint = getFootprint(cur, cand)
+                const fIdx = footprint.indices
+                const fCov = footprint.coverage
+                let gain = 0
+                for (let k = 0; k < fIdx.length; k++) {
+                  const base = fIdx[k] << 2
+                  const f = pck[base]
+                  if (f >= 1) continue
+                  const rem = 1 - f
+                  const dc = threadDarkness * fCov[k]
+                  const delta = dc < rem ? dc : rem
+                  gain += pck[base + 2] * delta * (2 * (pck[base + 1] - f) - delta)
+                }
+                const dist = ringDists ? ringDists[pIdx] : Math.hypot(pegs[cand].x - curX, pegs[cand].y - curY)
+                const score = gain / dist
+                if (score > bestScore) { bestScore = score; bestNext = cand }
+              }
+              return { bestNext, bestLine, bestScore }
+            }
 
             for (let ci = 0; ci < aPegs.length; ci++) {
               const cand = aPegs[ci]
               if (cand === cur || cand === prev) continue
-              const diff = Math.abs(cand - cur)
-              if ((diff < pegCountVal - diff ? diff : pegCountVal - diff) < mSpan) continue
-              if (!allowUsed && rCount[cand] > 0) continue
-              const pIdx = pairIndex(cur, cand)
-              if (rUses[pIdx] >= 3) continue
+              const distPx = Math.hypot(pegs[cand].x - pegs[cur].x, pegs[cand].y - pegs[cur].y)
+              if (distPx < 6) continue
+              if (!allowUsed && usedGlobal![pairIndex(cur, cand)] > 0) continue
+              if (!isInsideRegion(cur, cand)) continue
+              const line = getChord(cur, cand)
+              if (line.length < 3) continue
 
-              const footprint = getFootprint(cur, cand)
-              const fIdx = footprint.indices
-              const fCov = footprint.coverage
-              let gain = 0
-              for (let k = 0; k < fIdx.length; k++) {
-                const base = fIdx[k] << 2
-                const f = pck[base]
-                if (f >= 1) continue
-                const rem = 1 - f
-                const dc = threadDarkness * fCov[k]
-                const delta = dc < rem ? dc : rem
-                gain += pck[base + 2] * delta * (2 * (pck[base + 1] - f) - delta)
+              let sum = 0
+              for (let k = 0; k < line.length; k++) {
+                const idxPx = line[k]
+                sum += impMap[idxPx] * (res![idxPx] - halfWeight)
               }
-              const dist = ringDists ? ringDists[pIdx] : Math.hypot(pegs[cand].x - curX, pegs[cand].y - curY)
-              const score = gain / dist
-              if (score > bestScore) { bestScore = score; bestNext = cand }
+
+              const score = sum / Math.pow(line.length, 0.85)
+              if (score > bestScore) {
+                bestScore = score
+                bestNext = cand
+                bestLine = line
+              }
             }
             return { bestNext, bestLine, bestScore }
           }
 
-          for (let ci = 0; ci < aPegs.length; ci++) {
-            const cand = aPegs[ci]
-            if (cand === cur || cand === prev) continue
-            const distPx = Math.hypot(pegs[cand].x - pegs[cur].x, pegs[cand].y - pegs[cur].y)
-            if (distPx < 6) continue
-            if (!allowUsed && usedGlobal![pairIndex(cur, cand)] > 0) continue
-            if (!isInsideRegion(cur, cand)) continue
-            const line = getChord(cur, cand)
-            if (line.length < 3) continue
-
-            let sum = 0
-            for (let k = 0; k < line.length; k++) {
-              const idxPx = line[k]
-              sum += impMap[idxPx] * (res![idxPx] - halfWeight)
+          while (iter < sBudget && steps.length < safeSteps) {
+            if (ran >= stepLimit) {
+              current = cur
+              previous = prev
+              recentPos = rPos
+              w = iter
+              markedLayerChange = marked
+              return false
             }
 
-            const score = sum / Math.pow(line.length, 0.85)
-            if (score > bestScore) {
-              bestScore = score
-              bestNext = cand
-              bestLine = line
-            }
-          }
-          return { bestNext, bestLine, bestScore }
-        }
+            let found = pickChord(false)
 
-        while (iter < sBudget && steps.length < safeSteps) {
-          if (ran >= stepLimit) {
-            current = cur
-            previous = prev
-            recentPos = rPos
-            w = iter
-            markedLayerChange = marked
-            return false
-          }
+            if (isRing && (found.bestNext < 0 || found.bestScore <= 0)) break
 
-          let found = pickChord(false)
-
-          if (isRing && (found.bestNext < 0 || found.bestScore <= 0)) break
-
-          if (found.bestNext < 0) {
-            if (contourBuild && res) {
-              const hop = loopAdj[l].find(edge => edge.from === cur && edge.to !== prev
-                && aPegs.includes(edge.to) && isInsideRegion(edge.from, edge.to))
-              if (hop) {
-                const hopLine = getChord(hop.from, hop.to)
-                recordStep(hop.from, hop.to, l, '轮廓锁边', !marked)
-                marked = true
-                for (let p = 0; p < hopLine.length; p++) {
-                  res[hopLine[p]] = Math.max(-0.35, res[hopLine[p]] - lineFade * 0.4)
+            if (found.bestNext < 0) {
+              if (contourBuild && res) {
+                const hop = loopAdj[l].find(edge => edge.from === cur && edge.to !== prev
+                  && aPegs.includes(edge.to) && isInsideRegion(edge.from, edge.to))
+                if (hop) {
+                  const hopLine = getChord(hop.from, hop.to)
+                  recordStep(hop.from, hop.to, l, '轮廓锁边', !marked)
+                  marked = true
+                  for (let p = 0; p < hopLine.length; p++) {
+                    res[hopLine[p]] = Math.max(-0.35, res[hopLine[p]] - lineFade * 0.4)
+                  }
+                  prev = hop.from
+                  cur = hop.to
+                  iter++
+                  ran++
+                  continue
                 }
-                prev = hop.from
-                cur = hop.to
-                iter++
-                ran++
-                continue
+              }
+              found = pickChord(true)
+            }
+            // The budget is a ceiling, not a reason to bridge holes or white space.
+            // Stop this group if no legal continuation exists; later groups restart.
+            if (found.bestNext < 0) break
+
+            if (isRing && pck && rUses) {
+              const pIdx = pairIndex(cur, found.bestNext)
+              rUses[pIdx]++
+              const footprint = getFootprint(cur, found.bestNext)
+              const fIdx = footprint.indices
+              const fCov = footprint.coverage
+              for (let k = 0; k < fIdx.length; k++) {
+                const base = fIdx[k] << 2
+                const next = pck[base] + threadDarkness * fCov[k]
+                pck[base] = next < 1 ? next : 1
+              }
+            } else if (res) {
+              if (!found.bestLine) found.bestLine = getChord(cur, found.bestNext)
+              usedGlobal![pairIndex(cur, found.bestNext)] = 1
+              for (let k = 0; k < found.bestLine.length; k++) {
+                const p = found.bestLine[k]
+                res[p] = Math.max(-0.35, res[p] - lineFade)
               }
             }
-            found = pickChord(true)
-          }
-          // The budget is a ceiling, not a reason to bridge holes or white space.
-          // Stop this group if no legal continuation exists; later groups restart.
-          if (found.bestNext < 0) break
 
-          if (isRing && pck && rUses) {
-            const pIdx = pairIndex(cur, found.bestNext)
-            rUses[pIdx]++
-            const footprint = getFootprint(cur, found.bestNext)
-            const fIdx = footprint.indices
-            const fCov = footprint.coverage
-            for (let k = 0; k < fIdx.length; k++) {
-              const base = fIdx[k] << 2
-              const next = pck[base] + threadDarkness * fCov[k]
-              pck[base] = next < 1 ? next : 1
-            }
-          } else if (res) {
-            if (!found.bestLine) found.bestLine = getChord(cur, found.bestNext)
-            usedGlobal![pairIndex(cur, found.bestNext)] = 1
-            for (let k = 0; k < found.bestLine.length; k++) {
-              const p = found.bestLine[k]
-              res[p] = Math.max(-0.35, res[p] - lineFade)
-            }
+            recordStep(cur, found.bestNext, l, isRing ? '光影走线' : '内部混绕', !marked)
+            marked = true
+            const evicted = rRing[rPos]
+            if (evicted >= 0) rCount[evicted]--
+            rRing[rPos] = cur
+            rCount[cur]++
+            rPos = (rPos + 1) % 12
+            prev = cur
+            cur = found.bestNext
+            iter++
+            ran++
           }
-
-          recordStep(cur, found.bestNext, l, isRing ? '光影走线' : '内部混绕', !marked)
-          marked = true
-          const evicted = rRing[rPos]
-          if (evicted >= 0) rCount[evicted]--
-          rRing[rPos] = cur
-          rCount[cur]++
-          rPos = (rPos + 1) % 12
-          prev = cur
-          cur = found.bestNext
-          iter++
-          ran++
         }
 
         current = cur
