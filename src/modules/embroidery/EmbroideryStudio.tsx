@@ -1050,16 +1050,6 @@ export default function EmbroideryStudio() {
                   <Play size={13} /> 分步跟绣教程
                 </button>
               </div>
-              {viewMode === 'guide' && (
-                <label className="studio-fullscreen-toggle">
-                  <input
-                    type="checkbox"
-                    checked={showGhost}
-                    onChange={event => setShowGhost(event.target.checked)}
-                  />
-                  <span>未绣淡影</span>
-                </label>
-              )}
               <button
                 type="button"
                 className="studio-fullscreen-close"
@@ -1143,6 +1133,14 @@ export default function EmbroideryStudio() {
                   aria-label="全屏刺绣进度针步"
                   onChange={event => setCurrentStep(Number(event.target.value))}
                 />
+                <label className="studio-fullscreen-guide-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showGhost}
+                    onChange={event => setShowGhost(event.target.checked)}
+                  />
+                  <span>未绣淡影</span>
+                </label>
               </aside>
             )}
           </div>

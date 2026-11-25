@@ -1283,8 +1283,10 @@ a {
 .studio-fullscreen-tools {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
+  margin-left: auto;
 }
 .studio-fullscreen-tools .segmented {
   background: rgba(255, 255, 255, 0.12);
@@ -1315,34 +1317,15 @@ a {
 .studio-fullscreen-close:hover {
   background: rgba(255, 255, 255, 0.24);
 }
-.studio-fullscreen-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #eef1e8;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  user-select: none;
-}
-.studio-fullscreen-toggle:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-.studio-fullscreen-toggle input {
-  accent-color: #c86442;
-  cursor: pointer;
-}
 .studio-fullscreen-body {
+  --fullscreen-guide-width: clamp(252px, 18.5vw, 268px);
   flex: 1;
   min-height: 0;
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--fullscreen-guide-width) minmax(0, 1fr) var(--fullscreen-guide-width);
+  grid-template-rows: minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
   gap: 20px;
 }
 .studio-fullscreen-stage {
@@ -1356,9 +1339,13 @@ a {
   justify-content: center;
   container-type: size;
 }
+.studio-fullscreen-body > .studio-fullscreen-stage {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: stretch;
+}
 .studio-fullscreen-guide {
-  width: 268px;
-  flex-shrink: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1368,6 +1355,11 @@ a {
   border: 1px solid #e2e4d7;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
   color: #35392f;
+}
+.studio-fullscreen-body > .studio-fullscreen-guide {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
 }
 .studio-fullscreen-guide-top {
   display: flex;
@@ -1463,6 +1455,23 @@ a {
 .studio-fullscreen-guide-range {
   width: 100%;
   accent-color: #6f7c54;
+}
+.studio-fullscreen-guide-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid #eceee3;
+  color: #4b5241;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+.studio-fullscreen-guide-toggle input {
+  margin: 0;
+  accent-color: #6f7c54;
+  cursor: pointer;
 }
 .studio-fullscreen-board {
   width: min(100cqw, calc((100cqh - 2px) * var(--board-ratio, 1) + 2px));
@@ -2274,24 +2283,34 @@ a {
     padding: 20px 44px 12px;
   }
 }
-@media (max-width: 900px) {
+@media (max-width: 1040px) {
   .studio-fullscreen-body {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) min(244px, 34vh);
     gap: 12px;
   }
-  .studio-fullscreen-stage {
-    width: 100%;
-    height: auto;
+  .studio-fullscreen-body > .studio-fullscreen-stage {
+    grid-column: 1;
+    grid-row: 1;
   }
-  .studio-fullscreen-guide {
-    width: 100%;
-    max-height: 36vh;
+  .studio-fullscreen-body > .studio-fullscreen-guide {
+    grid-column: 1;
+    grid-row: 2;
+    width: min(100%, 480px);
+    justify-self: center;
+    align-self: start;
+    max-height: 100%;
+    padding: 12px 14px;
+    gap: 9px;
     overflow-y: auto;
   }
 }
 @media (max-width: 700px) {
   .studio-fullscreen-overlay {
     padding: 14px;
+  }
+  .studio-fullscreen-tools {
+    gap: 8px;
   }
   .studio-fullscreen-meta strong {
     font-size: 14px;

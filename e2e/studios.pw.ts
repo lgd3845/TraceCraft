@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { Download, Page } from '@playwright/test'
+import type { Download, Locator, Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Artwork } from '../src/lib/types'
 
@@ -34,6 +34,68 @@ async function exportFromModal(page: Page, optionLabels: string[]) {
 
 async function openNavigation(page: Page) {
   if (page.viewportSize()!.width < 700) await page.getByRole('button', { name: '打开导航', exact: true }).click()
+}
+
+async function assertFullscreenModeStable(
+  fullscreen: Locator,
+  targetModeLabel: string,
+  options: { expectGuide?: boolean; checkBoardBounds?: boolean; checkBoardCenter?: boolean } = {},
+) {
+  const { expectGuide = true, checkBoardBounds = true, checkBoardCenter = true } = options
+  const board = fullscreen.locator('.studio-fullscreen-board')
+  const segmented = fullscreen.locator('.studio-fullscreen-tools .segmented')
+  const bar = fullscreen.locator('.studio-fullscreen-bar')
+
+  const beforeBoard = await board.boundingBox()
+  const beforeSegmented = await segmented.boundingBox()
+  const beforeBar = await bar.boundingBox()
+  expect(beforeBoard).not.toBeNull()
+  expect(beforeSegmented).not.toBeNull()
+  expect(beforeBar).not.toBeNull()
+
+  await fullscreen.getByRole('button', { name: targetModeLabel, exact: true }).click()
+
+  if (expectGuide) {
+    await expect(fullscreen.locator('.studio-fullscreen-guide')).toBeVisible()
+  }
+
+  const afterBoard = await board.boundingBox()
+  const afterSegmented = await segmented.boundingBox()
+  const afterBar = await bar.boundingBox()
+  expect(afterBoard).not.toBeNull()
+  expect(afterSegmented).not.toBeNull()
+  expect(afterBar).not.toBeNull()
+
+  expect(Math.abs(afterSegmented!.x - beforeSegmented!.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(afterSegmented!.y - beforeSegmented!.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(afterSegmented!.width - beforeSegmented!.width)).toBeLessThanOrEqual(1)
+  expect(Math.abs(afterSegmented!.height - beforeSegmented!.height)).toBeLessThanOrEqual(1)
+  expect(Math.abs(afterBar!.height - beforeBar!.height)).toBeLessThanOrEqual(1)
+
+  if (checkBoardBounds) {
+    expect(Math.abs(afterBoard!.x - beforeBoard!.x)).toBeLessThanOrEqual(1)
+    expect(Math.abs(afterBoard!.y - beforeBoard!.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(afterBoard!.width - beforeBoard!.width)).toBeLessThanOrEqual(1)
+    expect(Math.abs(afterBoard!.height - beforeBoard!.height)).toBeLessThanOrEqual(1)
+  }
+
+  if (checkBoardCenter) {
+    const beforeCx = beforeBoard!.x + beforeBoard!.width / 2
+    const beforeCy = beforeBoard!.y + beforeBoard!.height / 2
+    const afterCx = afterBoard!.x + afterBoard!.width / 2
+    const afterCy = afterBoard!.y + afterBoard!.height / 2
+    expect(Math.abs(afterCx - beforeCx)).toBeLessThanOrEqual(1)
+    expect(Math.abs(afterCy - beforeCy)).toBeLessThanOrEqual(1)
+  }
+
+  if (expectGuide) {
+    const guide = fullscreen.locator('.studio-fullscreen-guide')
+    const guideBox = await guide.boundingBox()
+    expect(guideBox).not.toBeNull()
+    const overlapsHorizontally = guideBox!.x < afterBoard!.x + afterBoard!.width - 1 && afterBoard!.x < guideBox!.x + guideBox!.width - 1
+    const overlapsVertically = guideBox!.y < afterBoard!.y + afterBoard!.height - 1 && afterBoard!.y < guideBox!.y + guideBox!.height - 1
+    expect(overlapsHorizontally && overlapsVertically).toBe(false)
+  }
 }
 
 async function fixtureImage(page: Page, transparent = false) {
@@ -72,6 +134,9 @@ test('真实图片本地转图、尺寸与材料一致，重载后能继续编�
   const fullscreen = page.getByRole('dialog', { name: '全屏预览拼豆作品' })
   await expect(fullscreen).toBeVisible()
   await expect(fullscreen.locator('canvas')).toBeVisible()
+  await assertFullscreenModeStable(fullscreen, '像素图纸', { expectGuide: false, checkBoardBounds: false, checkBoardCenter: true })
+  await expect(fullscreen.getByLabel('显示格内色号')).toBeVisible()
+  await assertFullscreenModeStable(fullscreen, '拼豆实感', { expectGuide: false, checkBoardBounds: false, checkBoardCenter: true })
   await fullscreen.getByRole('button', { name: '关闭全屏预览', exact: true }).click()
   await expect(fullscreen).toHaveCount(0)
   await page.getByRole('button', { name: '保存作品', exact: true }).click()
@@ -224,7 +289,7 @@ test('绕线画工坊支持上传照片、分步跟绕教程及钉位模板 SVG/
   await page.getByRole('button', { name: '全屏浏览', exact: true }).click()
   const fullscreen = page.getByRole('dialog', { name: '全屏预览绕线画作品' })
   await expect(fullscreen).toBeVisible()
-  await fullscreen.getByRole('button', { name: '分步跟绕教程', exact: true }).click()
+  await assertFullscreenModeStable(fullscreen, '分步跟绕教程')
   const fullscreenGuide = fullscreen.locator('.studio-fullscreen-guide')
   await expect(fullscreenGuide).toBeVisible()
   const ghostToggle = fullscreen.getByLabel('总览底影')
@@ -489,7 +554,7 @@ test('刺绣工坊支持上传图片、切换三种针法算法、分步跟绣�
   await page.getByRole('button', { name: '全屏浏览', exact: true }).click()
   const fullscreen = page.getByRole('dialog', { name: '全屏预览刺绣作品' })
   await expect(fullscreen).toBeVisible()
-  await fullscreen.getByRole('button', { name: '分步跟绣教程', exact: true }).click()
+  await assertFullscreenModeStable(fullscreen, '分步跟绣教程')
   const fullscreenGuide = fullscreen.locator('.studio-fullscreen-guide')
   await expect(fullscreenGuide).toBeVisible()
   const ghostToggle = fullscreen.getByLabel('未绣淡影')
@@ -601,7 +666,7 @@ test('圆规画工坊支持上传图片、切换三种圆规算法、分步跟�
   await page.getByRole('button', { name: '全屏浏览', exact: true }).click()
   const fullscreen = page.getByRole('dialog', { name: '全屏预览圆规画作品' })
   await expect(fullscreen).toBeVisible()
-  await fullscreen.getByRole('button', { name: '分步跟画教程', exact: true }).click()
+  await assertFullscreenModeStable(fullscreen, '分步跟画教程')
   const fullscreenGuide = fullscreen.locator('.studio-fullscreen-guide')
   await expect(fullscreenGuide).toBeVisible()
   const ghostToggle = fullscreen.getByLabel('总览底影')
@@ -715,7 +780,8 @@ test('雕刻画工坊支持上传照片、自动连桥防掉孤岛、三种雕�
   await page.getByRole('button', { name: '全屏浏览', exact: true }).click()
   const fullscreen = page.getByRole('dialog', { name: '全屏预览雕刻画作品' })
   await expect(fullscreen).toBeVisible()
-  await fullscreen.getByRole('button', { name: '分步跟刻教程', exact: true }).click()
+  await assertFullscreenModeStable(fullscreen, '线稿底稿', { expectGuide: false })
+  await assertFullscreenModeStable(fullscreen, '分步跟刻教程')
   const fullscreenGuide = fullscreen.locator('.studio-fullscreen-guide')
   await expect(fullscreenGuide).toBeVisible()
   const ghostToggle = fullscreen.getByLabel('未刻区域底影')

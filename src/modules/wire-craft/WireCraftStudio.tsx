@@ -1247,16 +1247,6 @@ export default function WireCraftStudio() {
                   <Play size={13} /> 分步跟绕教程
                 </button>
               </div>
-              {mode === 'guide' && (
-                <label className="studio-fullscreen-toggle">
-                  <input
-                    type="checkbox"
-                    checked={showGhost}
-                    onChange={event => setShowGhost(event.target.checked)}
-                  />
-                  <span>总览底影</span>
-                </label>
-              )}
               <button
                 type="button"
                 className="studio-fullscreen-close"
@@ -1349,6 +1339,14 @@ export default function WireCraftStudio() {
                   disabled={!canUsePlan}
                   onChange={event => setCurrentStep(Number(event.target.value))}
                 />
+                <label className="studio-fullscreen-guide-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showGhost}
+                    onChange={event => setShowGhost(event.target.checked)}
+                  />
+                  <span>总览底影</span>
+                </label>
               </aside>
             )}
           </div>

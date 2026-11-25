@@ -359,16 +359,16 @@ export default function BeadsStudio() {
             <span>{data.columns} × {data.rows} 格 · {total.toLocaleString()} 颗 · {materials.length} 色</span>
           </div>
           <div className="studio-fullscreen-tools">
-            <div className="segmented" role="group" aria-label="全屏预览方式">
-              <button type="button" className={mode === 'beads' ? 'active' : ''} aria-pressed={mode === 'beads'} onClick={() => setMode('beads')}><Circle size={13} /> 拼豆实感</button>
-              <button type="button" className={mode === 'pixels' ? 'active' : ''} aria-pressed={mode === 'pixels'} onClick={() => setMode('pixels')}><Grid2X2 size={13} /> 像素图纸</button>
-            </div>
             {mode === 'pixels' && (
               <label className="studio-codes-toggle is-dark">
                 <input type="checkbox" checked={showCodes} onChange={event => setShowCodes(event.target.checked)} />
                 <span>显示格内色号</span>
               </label>
             )}
+            <div className="segmented" role="group" aria-label="全屏预览方式">
+              <button type="button" className={mode === 'beads' ? 'active' : ''} aria-pressed={mode === 'beads'} onClick={() => setMode('beads')}><Circle size={13} /> 拼豆实感</button>
+              <button type="button" className={mode === 'pixels' ? 'active' : ''} aria-pressed={mode === 'pixels'} onClick={() => setMode('pixels')}><Grid2X2 size={13} /> 像素图纸</button>
+            </div>
             <button type="button" className="studio-fullscreen-close" onClick={() => setFullscreenOpen(false)} aria-label="关闭全屏预览">
               <X size={16} />
               <span>关闭</span>
