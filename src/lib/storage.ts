@@ -83,7 +83,8 @@ function isArtwork(value: unknown): value is Artwork {
       typeof data.gridSize === "number" &&
       typeof data.maxColors === "number" &&
       typeof data.hoopSizeCm === "number" &&
-      typeof data.fabricId === "string"
+      typeof data.fabricId === "string" &&
+      (data.removeBg === undefined || typeof data.removeBg === "boolean")
     );
   }
   if (value.kind === "wire-craft") {
@@ -123,7 +124,8 @@ function isArtwork(value: unknown): value is Artwork {
       typeof data.gridSize === "number" &&
       typeof data.frameSizeCm === "number" &&
       typeof data.materialId === "string" &&
-      isValidFraming(data.framing)
+      isValidFraming(data.framing) &&
+      (data.mirrorPrint === undefined || typeof data.mirrorPrint === "boolean")
     );
   }
   return false;

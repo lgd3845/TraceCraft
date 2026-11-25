@@ -22,6 +22,7 @@ export interface EmbroideryWorkerRequest {
   gridSize: number
   maxColors: number
   hoopSizeCm: number
+  removeBg?: boolean
 }
 
 const photoCache = new WorkerPhotoCache()
@@ -33,7 +34,8 @@ self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<EmbroideryWorkerRequ
   try {
     const resolvedPhoto = payload.source.kind === 'photo' ? photoCache.resolve(payload.source) : null
     const sourceKey = payload.source.kind === 'example' ? `ex:${payload.source.id}` : payload.source.key
-    const gridKey = `${sourceKey}|${payload.gridSize}|${payload.maxColors}`
+    const removeBg = payload.removeBg ?? true
+    const gridKey = `${sourceKey}|${payload.gridSize}|${payload.maxColors}|${removeBg ? 1 : 0}`
 
     let grid: QuantizedEmbroideryGrid
     if (gridKey === cachedGridKey && cachedGrid) {
@@ -48,7 +50,7 @@ self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<EmbroideryWorkerRequ
         sample.height,
         payload.gridSize,
         payload.maxColors,
-        true,
+        removeBg,
       )
       cachedGridKey = gridKey
       cachedGrid = grid

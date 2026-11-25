@@ -26,6 +26,7 @@ import { canvasThumbnailDataUrl, compressImageForStorage, loadStoredPhoto } from
 import { downloadFile } from '../../lib/export'
 import { isMediaRef } from '../../lib/mediaStore'
 import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
+import { readStepProgress, writeStepProgress } from '../../lib/storage'
 import { useStudio } from '../../lib/studio'
 import type { EmbroideryArtworkData } from '../../lib/types'
 import {
@@ -58,6 +59,13 @@ import {
 import type { EmbroideryViewMode } from './embroideryCanvas'
 import type { EmbroideryWorkerRequest } from './embroidery.worker'
 import './embroidery.css'
+
+const PROGRESS_STORAGE_KEY = 'tracecraft.embroidery-progress.v1'
+
+function clampStep(step: number, totalSteps: number): number {
+  if (totalSteps <= 0) return 1
+  return Math.max(1, Math.min(totalSteps, Number.isFinite(step) ? Math.trunc(step) : 1))
+}
 
 type SourceState =
   | { kind: 'example'; id: EmbroideryExampleId; label: string; preview: '' }
@@ -121,6 +129,13 @@ export default function EmbroideryStudio() {
   const [fabricId, setFabricId] = useState<string>(() =>
     savedWork?.fabricId ?? EMBROIDERY_EXAMPLES[0].recommendedFabricId,
   )
+  const [removeBg, setRemoveBg] = useState<boolean>(() => {
+    if (typeof savedWork?.removeBg === 'boolean') return savedWork.removeBg
+    if (savedWork?.sourceKind === 'example') {
+      return EMBROIDERY_EXAMPLES.find(item => item.id === savedWork.exampleId)?.removeBg ?? true
+    }
+    return EMBROIDERY_EXAMPLES[0].removeBg
+  })
 
   const [viewMode, setViewMode] = useState<EmbroideryViewMode>('realistic')
   const [currentStep, setCurrentStep] = useState(1)
@@ -176,6 +191,11 @@ export default function EmbroideryStudio() {
     }
   }, [source])
 
+  const signature = useMemo(() => {
+    const id = source.kind === 'example' ? `ex:${source.id}` : `ph:${source.uploadId}`
+    return `embroidery-v1|${id}|${stitchMode}|${gridSize}|${maxColors}|${hoopSizeCm}|${removeBg ? 1 : 0}`
+  }, [source, stitchMode, gridSize, maxColors, hoopSizeCm, removeBg])
+
   const workerPayload = useMemo<EmbroideryWorkerRequest | null>(() => {
     const workerSource: EmbroideryWorkerRequest['source'] | null =
       source.kind === 'example' ? { kind: 'example', id: source.id } : sampledPhoto.source
@@ -186,10 +206,11 @@ export default function EmbroideryStudio() {
       gridSize,
       maxColors,
       hoopSizeCm,
+      removeBg,
     }
-  }, [source, sampledPhoto.source, stitchMode, gridSize, maxColors, hoopSizeCm])
+  }, [source, sampledPhoto.source, stitchMode, gridSize, maxColors, hoopSizeCm, removeBg])
 
-  const generationJob = useMemo(() => ({ payload: workerPayload }), [workerPayload])
+  const generationJob = useMemo(() => ({ signature, payload: workerPayload }), [signature, workerPayload])
   const [result, setResult] = useState(() => ({
     job: null as typeof generationJob | null,
     plan: emptyEmbroideryPlan(stitchMode, hoopSizeCm),
@@ -271,7 +292,8 @@ export default function EmbroideryStudio() {
     runner.submit(generationJob.payload, {
       onSuccess: nextPlan => {
         if (cancelled || !mounted.current) return
-        setCurrentStep(1)
+        const savedStep = readStepProgress(PROGRESS_STORAGE_KEY, generationJob.signature)
+        setCurrentStep(clampStep(savedStep ?? 1, nextPlan.totalStitches))
         setResult({ job: generationJob, plan: nextPlan, title: submittedTitle })
         setGenerationFailure(null)
       },
@@ -288,6 +310,12 @@ export default function EmbroideryStudio() {
   useEffect(() => {
     setCurrentStep(prev => Math.max(1, Math.min(Math.max(1, plan.totalStitches), prev)))
   }, [plan.totalStitches])
+
+  useEffect(() => {
+    if (isPlanCurrent && plan.totalStitches > 0) {
+      writeStepProgress(PROGRESS_STORAGE_KEY, signature, currentStep)
+    }
+  }, [isPlanCurrent, plan.totalStitches, signature, currentStep])
 
   useEffect(() => {
     if (fullscreenOpen || !canvasRef.current) return
@@ -359,6 +387,7 @@ export default function EmbroideryStudio() {
     setTitle(meta.title)
     setStitchMode(meta.recommendedMode)
     setFabricId(meta.recommendedFabricId)
+    setRemoveBg(meta.removeBg)
     setCurrentStep(1)
   }
 
@@ -380,6 +409,7 @@ export default function EmbroideryStudio() {
       const baseName = file.name.replace(/\.[^.]+$/, '') || '刺绣作品'
       setSource({ kind: 'photo', uploadId, name: file.name, image, preview })
       setTitle(`${baseName} · 刺绣`)
+      setRemoveBg(true)
       setCurrentStep(1)
       notify('已抽出 DMC 色卡、结构流场方向与跟绣针序，照片仅在本机处理。')
     } catch (cause) {
@@ -437,6 +467,7 @@ export default function EmbroideryStudio() {
         maxColors,
         hoopSizeCm,
         fabricId,
+        removeBg,
       }
       const saved = await saveArtwork({ kind: 'embroidery', name: trimmed, data, thumbnail }, savedIdRef.current)
       if (!mounted.current) return
@@ -669,6 +700,18 @@ export default function EmbroideryStudio() {
               ))}
             </div>
           </div>
+
+          <label className="embroidery-bg-toggle">
+            <input
+              type="checkbox"
+              checked={removeBg}
+              onChange={event => setRemoveBg(event.target.checked)}
+            />
+            <span>
+              自动抠除四角纯色背景
+              <small>若主体靠近边缘被误抠，关闭后可铺满整个绣绷</small>
+            </span>
+          </label>
         </aside>
 
         <section className="embroidery-stage-column" aria-label="刺绣实感画布与跟绣教学">

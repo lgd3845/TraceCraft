@@ -220,4 +220,69 @@ describe("local artwork storage", () => {
     writeArtworks({ setItem: (_k, v) => { raw = v; } }, [updated]);
     expect(readArtworks({ getItem: () => raw })).toEqual([updated]);
   });
+
+  it("supports optional embroidery removeBg and carving mirrorPrint flags cleanly", () => {
+    const legacyEmbroidery: Artwork = {
+      id: "legacy-emb",
+      kind: "embroidery",
+      name: "旧刺绣",
+      thumbnail: "data:image/jpeg;base64,t",
+      createdAt: "2026-11-25T00:00:00.000Z",
+      data: {
+        sourceKind: "example",
+        exampleId: "camellia",
+        sourceName: "山茶花",
+        stitchMode: "long-short",
+        gridSize: 36,
+        maxColors: 12,
+        hoopSizeCm: 15,
+        fabricId: "linen-warm",
+      },
+    };
+    const configuredEmbroidery: Artwork = {
+      ...legacyEmbroidery,
+      id: "cfg-emb",
+      data: { ...legacyEmbroidery.data, removeBg: false },
+    };
+    const legacyCarving: Artwork = {
+      id: "legacy-carv",
+      kind: "carving",
+      name: "旧雕刻",
+      thumbnail: "data:image/jpeg;base64,t",
+      createdAt: "2026-11-25T00:00:00.000Z",
+      data: {
+        sourceKind: "example",
+        exampleId: "portrait",
+        sourceName: "人像",
+        algorithm: "positive-stencil",
+        contrastMode: "portrait",
+        bridgeWidthMm: 1.8,
+        gridSize: 128,
+        frameSizeCm: 18,
+        materialId: "vermilion-paper",
+        framing: { zoom: 1, x: 0.5, y: 0.5 },
+      },
+    };
+    const configuredCarving: Artwork = {
+      ...legacyCarving,
+      id: "cfg-carv",
+      data: { ...legacyCarving.data, mirrorPrint: true },
+    };
+
+    const parsed = readArtworks({
+      getItem: () => JSON.stringify([legacyEmbroidery, configuredEmbroidery, legacyCarving, configuredCarving]),
+    });
+    expect(parsed).toEqual([legacyEmbroidery, configuredEmbroidery, legacyCarving, configuredCarving]);
+
+    expect(() =>
+      readArtworks({
+        getItem: () => JSON.stringify([{ ...configuredEmbroidery, data: { ...configuredEmbroidery.data, removeBg: "yes" } }]),
+      }),
+    ).toThrow();
+    expect(() =>
+      readArtworks({
+        getItem: () => JSON.stringify([{ ...configuredCarving, data: { ...configuredCarving.data, mirrorPrint: "yes" } }]),
+      }),
+    ).toThrow();
+  });
 });

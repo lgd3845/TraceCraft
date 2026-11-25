@@ -336,6 +336,32 @@
   font-weight: 600;
 }
 
+.embroidery-bg-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 9px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: #f7f7f2;
+  border: 1px solid #eaebe2;
+  font-size: 9.5px;
+  color: #646d59;
+  cursor: pointer;
+}
+
+.embroidery-bg-toggle input {
+  margin-top: 2px;
+  accent-color: #849669;
+}
+
+.embroidery-bg-toggle small {
+  display: block;
+  font-size: 8px;
+  color: #9ba18e;
+  margin-top: 2px;
+}
+
 .embroidery-stage-column {
   min-width: 0;
   display: flex;

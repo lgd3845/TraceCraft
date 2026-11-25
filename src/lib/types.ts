@@ -31,6 +31,7 @@ export interface EmbroideryArtworkData {
   maxColors: number;
   hoopSizeCm: number;
   fabricId: string;
+  removeBg?: boolean;
 }
 
 export interface WireCraftArtworkData {
@@ -77,6 +78,7 @@ export interface CarvingArtworkData {
   frameSizeCm: number;
   materialId: string;
   framing: SavedFraming;
+  mirrorPrint?: boolean;
 }
 
 type ArtworkContent =
