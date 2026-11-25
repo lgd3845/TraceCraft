@@ -29,7 +29,7 @@ export const CARVING_ALGORITHM_INFO: Record<
     label: '阴刻版画木刻',
     badge: '木刻 / 橡皮章',
     summary: '模拟木刻版画与橡皮章排线刀触，亮部顺应结构转为可变宽排线刻槽，暗部保留完整受墨块面。',
-    tip: '若用于橡皮章或木刻拓印，请勾选「印章镜像翻转」，用三角刀刻出细排线、圆刀清底。',
+    tip: '用于橡皮章或木刻拓印时，用三角刀顺应结构刻出细排线，再用圆刀清理大面留白底板。',
   },
   'layered-shadowbox': {
     label: '多层光影纸雕',
@@ -236,7 +236,6 @@ export interface CarvingPlan {
   layers: CarvingLayerOutput[]
   steps: CarvingStep[]
   totalPerimeterMeters: number
-  mirrorPrint: boolean
 }
 
 export function safeCarvingFilename(title: string): string {
@@ -387,7 +386,6 @@ export function rgbaToCarvingField(
   gridSize: number = DEFAULT_CARVING_RESOLUTION,
   invert = false,
   contrastMode: CarvingContrastMode = 'portrait',
-  mirrorPrint = false,
 ): CarvingFieldInput {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error('图片尺寸无效，无法生成雕刻画底稿。')
@@ -411,7 +409,7 @@ export function rgbaToCarvingField(
     const ny = y / (gridSize - 1)
     const sy = Math.min(height - 1, startY + Math.floor(ny * side))
     for (let x = 0; x < gridSize; x++) {
-      const nx = mirrorPrint ? 1 - x / (gridSize - 1) : x / (gridSize - 1)
+      const nx = x / (gridSize - 1)
       const sx = Math.min(width - 1, startX + Math.floor(nx * side))
       const idx = (sy * width + sx) * 4
       const alpha = rgba[idx + 3] / 255
@@ -636,7 +634,6 @@ export function createCarvingExampleField(
   kind: CarvingExampleId,
   gridSize: number = DEFAULT_CARVING_RESOLUTION,
   contrastMode: CarvingContrastMode = 'portrait',
-  mirrorPrint = false,
 ): CarvingFieldInput {
   if (kind === 'portrait') {
     return rgbaToCarvingField(
@@ -646,7 +643,6 @@ export function createCarvingExampleField(
       gridSize,
       false,
       contrastMode,
-      mirrorPrint,
     )
   }
   const len = gridSize * gridSize
@@ -657,8 +653,7 @@ export function createCarvingExampleField(
 
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
-      const sampleX = mirrorPrint ? gridSize - 1 - x : x
-      const nx = (sampleX - center) / radius
+      const nx = (x - center) / radius
       const ny = (y - center) / radius
       const raw = sampleCarvingExamplePoint(kind, nx, ny)
       toned[y * gridSize + x] = raw < cutThreshold * 0.25 ? 0 : Math.pow(Math.min(1, raw), gamma * 0.8)
@@ -1209,7 +1204,6 @@ export function generateCarvingPlan(
   frameSizeCm: FrameSizeCm = 18,
   bridgeWidthMm: BridgeWidthMm = 1.8,
   contrastMode: CarvingContrastMode = 'portrait',
-  mirrorPrint = false,
 ): CarvingPlan {
   const gridSize = field.gridSize
   const len = gridSize * gridSize
@@ -1233,7 +1227,6 @@ export function generateCarvingPlan(
       layers: [],
       steps: [],
       totalPerimeterMeters: 0,
-      mirrorPrint,
     }
   }
 
@@ -1397,7 +1390,6 @@ export function generateCarvingPlan(
     layers: layerOutputs,
     steps: allSteps,
     totalPerimeterMeters: Number((cumulativeCm / 100).toFixed(2)),
-    mirrorPrint,
   }
 }
 
@@ -1454,7 +1446,6 @@ export function buildCarvingTemplateSvg(
 
   const scaleY = heightMm - 15
   const footerY = heightMm - 6
-  const mirrorNote = plan.mirrorPrint ? ' · 已镜像翻转(印章拓印)' : ''
   const midMm = Math.round(sideMm / 2)
   const axisSvg = `<g fill="#7d8373" font-size="2.2">
     <text x="${ox - 1.8}" y="${oy + sideMm + 3.8}" text-anchor="end">0</text>
@@ -1469,7 +1460,7 @@ export function buildCarvingTemplateSvg(
   <desc>TraceCraft 雕刻画工坊 1:1 实际尺寸刻纸/版画/纸雕底稿（${algInfo.label}），含防掉连接桥与先内后外下刀编号。</desc>
   <rect width="${widthMm}" height="${heightMm}" fill="#ffffff" />
   <text x="18" y="10.5" font-size="4.4" font-weight="600" fill="#343a2e">${safeTitle} · 1:1 雕刻画底稿</text>
-  <text x="${widthMm - 18}" y="10.5" font-size="3.1" fill="#707766" text-anchor="end">${plan.frameSizeCm}×${plan.frameSizeCm} cm · ${escapeXml(algInfo.label)} · ${plan.steps.length} 刀 · 连桥 ${plan.floatingIslandsBridged} 处${mirrorNote} · ${escapeXml(material.name)}</text>
+  <text x="${widthMm - 18}" y="10.5" font-size="3.1" fill="#707766" text-anchor="end">${plan.frameSizeCm}×${plan.frameSizeCm} cm · ${escapeXml(algInfo.label)} · ${plan.steps.length} 刀 · 连桥 ${plan.floatingIslandsBridged} 处 · ${escapeXml(material.name)}</text>
   <rect x="${ox}" y="${oy}" width="${sideMm}" height="${sideMm}" stroke="#2e3529" stroke-width="0.55" fill="#ffffff" />
   ${axisSvg}
   ${cutPathsSvg}
@@ -1491,7 +1482,6 @@ export function carvingStepsCsv(plan: CarvingPlan, title: string, materialName: 
     ['画幅尺寸 (cm)', `${plan.frameSizeCm} × ${plan.frameSizeCm}`],
     ['自动加固悬空孤岛数', plan.floatingIslandsBridged],
     ['连接桥宽度(mm)', plan.bridgeWidthMm],
-    ['印章镜像模式', plan.mirrorPrint ? '已镜像翻转' : '正向原图'],
     ['总镂空下刀数', plan.steps.length],
     ['预计总刻线长 (m)', plan.totalPerimeterMeters],
     ['参考纸材', materialName],

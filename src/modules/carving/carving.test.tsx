@@ -36,19 +36,6 @@ function createBullseyeRgba(size: number): Uint8ClampedArray {
   return rgba
 }
 
-function createAsymmetricRgba(size: number): Uint8ClampedArray {
-  const rgba = new Uint8ClampedArray(size * size * 4).fill(255)
-  for (let y = 20; y < size - 20; y++) {
-    for (let x = 14; x < Math.floor(size * 0.35); x++) {
-      const i = (y * size + x) * 4
-      rgba[i] = 15
-      rgba[i + 1] = 15
-      rgba[i + 2] = 20
-    }
-  }
-  return rgba
-}
-
 function isFullyConnectedToFrame(mask: Uint8Array, size: number): boolean {
   const visited = new Uint8Array(mask.length)
   const queue = new Int32Array(mask.length)
@@ -98,7 +85,7 @@ describe('multi-algorithm photo carving & auto-bridge stencil engine', () => {
     expect(Math.max(...counts)).toBeGreaterThanOrEqual(6)
   })
 
-  it('rejects transparent images, yields zero steps for pure white, and flips horizontally for mirror stamps', () => {
+  it('rejects transparent images and yields zero steps for pure white', () => {
     const empty = new Uint8ClampedArray(64 * 64 * 4)
     expect(() => rgbaToCarvingField(empty, 64, 64)).toThrow(/全部透明/)
 
@@ -111,20 +98,12 @@ describe('multi-algorithm photo carving & auto-bridge stencil engine', () => {
       expect(plan.steps).toEqual([])
       expect(plan.floatingIslandsBridged).toBe(0)
     }
-
-    const asym = createAsymmetricRgba(96)
-    const normal = rgbaToCarvingField(asym, 96, 96, 96, false, 'portrait', false)
-    const mirrored = rgbaToCarvingField(asym, 96, 96, 96, false, 'portrait', true)
-    expect(normal.darkness[48 * 96 + 24]).toBeGreaterThan(0.5)
-    expect(normal.darkness[48 * 96 + 72]).toBe(0)
-    expect(mirrored.darkness[48 * 96 + 24]).toBe(0)
-    expect(mirrored.darkness[48 * 96 + 72]).toBeGreaterThan(0.5)
   })
 
   it('detects disconnected floating islands and auto-bridges every retained pixel 4-connected to the outer frame', () => {
     const bullseye = createBullseyeRgba(96)
-    const field = rgbaToCarvingField(bullseye, 96, 96, 96, false, 'portrait', false)
-    const plan = generateCarvingPlan(field, 'positive-stencil', 18, 1.8, 'portrait', false)
+    const field = rgbaToCarvingField(bullseye, 96, 96, 96, false, 'portrait')
+    const plan = generateCarvingPlan(field, 'positive-stencil', 18, 1.8, 'portrait')
 
     expect(plan.floatingIslandsBridged).toBeGreaterThanOrEqual(1)
     expect(plan.bridges.length).toBe(plan.floatingIslandsBridged)
@@ -160,7 +139,7 @@ describe('multi-algorithm photo carving & auto-bridge stencil engine', () => {
 
   it('exports valid 1:1 mm stencil SVG templates with bridges and formula-safe CSV', () => {
     const field = createCarvingExampleField('portrait', 96)
-    const plan = generateCarvingPlan(field, 'positive-stencil', 18, 1.8, 'portrait', true)
+    const plan = generateCarvingPlan(field, 'positive-stencil', 18, 1.8, 'portrait')
     const svg = buildCarvingTemplateSvg(plan, 'A&B <Carving>', CARVING_MATERIALS[0])
 
     expect(svg).toContain('width="216mm"')

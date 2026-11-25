@@ -770,38 +770,6 @@ test('雕刻画工坊支持上传照片、自动连桥防掉孤岛、三种雕�
   }
 })
 
-test('雕刻画印章镜像翻转可同步导出 SVG/CSV 并在保存重载后保留', async ({ page }) => {
-  const errors: string[] = []
-  page.on('pageerror', error => errors.push(error.message))
-
-  await page.goto('/?studio=carving')
-  await expect(page.getByRole('button', { name: '导出图纸', exact: true })).toBeEnabled()
-
-  const mirrorCheckbox = page.getByRole('checkbox', { name: /印章镜像翻转/ })
-  await expect(mirrorCheckbox).not.toBeChecked()
-  await mirrorCheckbox.check()
-  await expect(mirrorCheckbox).toBeChecked()
-  await expect(page.getByRole('button', { name: '导出图纸', exact: true })).toBeEnabled()
-
-  const [svgDownload, csvDownload] = await exportFromModal(page, ['1:1 雕刻底稿模板', '雕刻步骤顺序表'])
-  const svg = await readFile((await svgDownload.path())!, 'utf8')
-  expect(svg).toContain('已镜像翻转')
-  const csv = await readFile((await csvDownload.path())!, 'utf8')
-  expect(csv).toContain('印章镜像模式')
-  expect(csv).toContain('已镜像翻转')
-
-  await page.getByRole('button', { name: '保存作品', exact: true }).click()
-  await page.locator('#carving-title').fill('镜像印章测试')
-  await page.getByRole('button', { name: '确认保存' }).click()
-  await expect(page.getByRole('button', { name: '更新作品', exact: true })).toBeVisible()
-
-  await page.goto('/?studio=library')
-  await page.getByRole('button', { name: /继续编辑/ }).first().click()
-  await expect(page).toHaveURL(/studio=carving&work=/)
-  await expect(page.getByRole('checkbox', { name: /印章镜像翻转/ })).toBeChecked()
-  expect(errors).toEqual([])
-})
-
 test('刺绣工坊支持记住跟绣进度与切换自动抠除背景并持久化', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))

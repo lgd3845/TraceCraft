@@ -47,7 +47,6 @@ export function sampleImageToCarvingField(
   gridSize: number,
   invert = false,
   contrastMode: CarvingContrastMode = 'portrait',
-  mirrorPrint = false,
   framing: PhotoFraming = DEFAULT_PHOTO_FRAMING,
 ): CarvingFieldInput {
   const { sx, sy, side } = photoCropRect(image.naturalWidth, image.naturalHeight, framing)
@@ -57,7 +56,7 @@ export function sampleImageToCarvingField(
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(image, sx, sy, side, side, 0, 0, gridSize, gridSize)
   const rgba = ctx.getImageData(0, 0, gridSize, gridSize).data
-  return rgbaToCarvingField(rgba, gridSize, gridSize, gridSize, invert, contrastMode, mirrorPrint)
+  return rgbaToCarvingField(rgba, gridSize, gridSize, gridSize, invert, contrastMode)
 }
 
 const vectorLayerCache = new WeakMap<CarvingPlan, Map<string, HTMLCanvasElement>>()

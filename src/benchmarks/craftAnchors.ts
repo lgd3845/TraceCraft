@@ -677,8 +677,8 @@ function runCarvingCase(
   algorithm: 'positive-stencil' | 'woodcut-relief' | 'layered-shadowbox',
   gridSize: number,
 ): AnchorCaseResult {
-  const field = createCarvingExampleField('portrait', gridSize, 'portrait', false)
-  const plan = generateCarvingPlan(field, algorithm, 18, 1.8, 'portrait', false)
+  const field = createCarvingExampleField('portrait', gridSize, 'portrait')
+  const plan = generateCarvingPlan(field, algorithm, 18, 1.8, 'portrait')
 
   const allLayers4Connected = plan.layers.every(l => is4ConnectedToFrame(l.retainedMask, plan.gridSize)) ? 1 : 0
 

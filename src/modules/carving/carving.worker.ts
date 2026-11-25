@@ -22,7 +22,6 @@ export interface CarvingWorkerRequest {
   frameSizeCm: FrameSizeCm
   bridgeWidthMm: BridgeWidthMm
   contrastMode: CarvingContrastMode
-  mirrorPrint?: boolean
 }
 
 const photoCache = new WorkerPhotoCache()
@@ -34,15 +33,14 @@ self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<CarvingWorkerRequest
   try {
     const resolvedPhoto = payload.source.kind === 'photo' ? photoCache.resolve(payload.source) : null
     const sourceKey = payload.source.kind === 'example' ? `ex:${payload.source.id}` : payload.source.key
-    const mirrorPrint = Boolean(payload.mirrorPrint)
-    const fieldKey = `${sourceKey}|${payload.gridSize}|${payload.contrastMode}|${mirrorPrint ? 1 : 0}`
+    const fieldKey = `${sourceKey}|${payload.gridSize}|${payload.contrastMode}`
 
     let field: CarvingFieldInput
     if (fieldKey === cachedFieldKey && cachedField) {
       field = cachedField
     } else {
       field = payload.source.kind === 'example'
-        ? createCarvingExampleField(payload.source.id, payload.gridSize, payload.contrastMode, mirrorPrint)
+        ? createCarvingExampleField(payload.source.id, payload.gridSize, payload.contrastMode)
         : rgbaToCarvingField(
             resolvedPhoto!.rgba,
             resolvedPhoto!.width,
@@ -50,7 +48,6 @@ self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<CarvingWorkerRequest
             payload.gridSize,
             false,
             payload.contrastMode,
-            mirrorPrint,
           )
       cachedFieldKey = fieldKey
       cachedField = field
@@ -62,7 +59,6 @@ self.onmessage = (event: MessageEvent<WorkerRequestEnvelope<CarvingWorkerRequest
       payload.frameSizeCm,
       payload.bridgeWidthMm,
       payload.contrastMode,
-      mirrorPrint,
     )
     self.postMessage({ jobId, result: plan } satisfies WorkerResponseEnvelope<CarvingPlan>)
   } catch (cause) {

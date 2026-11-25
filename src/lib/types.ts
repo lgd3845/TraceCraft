@@ -78,7 +78,6 @@ export interface CarvingArtworkData {
   frameSizeCm: number;
   materialId: string;
   framing: SavedFraming;
-  mirrorPrint?: boolean;
 }
 
 type ArtworkContent =

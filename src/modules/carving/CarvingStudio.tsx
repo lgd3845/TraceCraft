@@ -69,7 +69,6 @@ function emptyCarvingPlan(
   gridSize: CarvingResolution,
   frameSizeCm: FrameSizeCm,
   bridgeWidthMm: BridgeWidthMm,
-  mirrorPrint = false,
 ): CarvingPlan {
   return {
     algorithm,
@@ -83,7 +82,6 @@ function emptyCarvingPlan(
     layers: [],
     steps: [],
     totalPerimeterMeters: 0,
-    mirrorPrint,
   }
 }
 
@@ -147,7 +145,6 @@ export default function CarvingStudio() {
   )
   const [materialId, setMaterialId] = useState<string>(() => savedWork?.materialId ?? CARVING_EXAMPLES[0].defaultMaterialId)
   const [framing, setFraming] = useState<PhotoFraming>(() => savedWork?.framing ?? DEFAULT_PHOTO_FRAMING)
-  const [mirrorPrint, setMirrorPrint] = useState<boolean>(() => Boolean(savedWork?.mirrorPrint))
 
   const [mode, setMode] = useState<'realistic' | 'draft' | 'guide'>('realistic')
   const [requestedStep, setCurrentStep] = useState(1)
@@ -186,8 +183,8 @@ export default function CarvingStudio() {
 
   const signature = useMemo(() => {
     const id = source.kind === 'example' ? `ex:${source.id}` : `ph:${source.uploadId}`
-    return `carving-v1|${id}|${framing.zoom}:${framing.x}:${framing.y}|${algorithm}|${contrastMode}|${bridgeWidthMm}|${gridSize}|${frameSizeCm}${mirrorPrint ? '|mirror' : ''}`
-  }, [source, framing, algorithm, contrastMode, bridgeWidthMm, gridSize, frameSizeCm, mirrorPrint])
+    return `carving-v1|${id}|${framing.zoom}:${framing.x}:${framing.y}|${algorithm}|${contrastMode}|${bridgeWidthMm}|${gridSize}|${frameSizeCm}`
+  }, [source, framing, algorithm, contrastMode, bridgeWidthMm, gridSize, frameSizeCm])
 
   const progressSignature = useMemo(() => {
     if (source.kind !== 'photo' || !savedId || persistedUploadId !== source.uploadId) {
@@ -238,9 +235,8 @@ export default function CarvingStudio() {
       frameSizeCm,
       bridgeWidthMm,
       contrastMode,
-      mirrorPrint,
     }
-  }, [restoringSavedPhoto, source, sampledPhoto.source, gridSize, algorithm, frameSizeCm, bridgeWidthMm, contrastMode, mirrorPrint])
+  }, [restoringSavedPhoto, source, sampledPhoto.source, gridSize, algorithm, frameSizeCm, bridgeWidthMm, contrastMode])
 
   const generationJob = useMemo(
     () => ({ signature, payload: workerPayload }),
@@ -531,7 +527,6 @@ export default function CarvingStudio() {
         frameSizeCm,
         materialId,
         framing,
-        mirrorPrint,
       }
       const saved = await saveArtwork({ kind: 'carving', name: trimmed, data, thumbnail }, savedIdRef.current)
       if (!mounted.current) return
@@ -740,17 +735,6 @@ export default function CarvingStudio() {
                 )
               })}
             </div>
-            <label className="carving-mirror-toggle">
-              <input
-                type="checkbox"
-                checked={mirrorPrint}
-                onChange={event => setMirrorPrint(event.target.checked)}
-              />
-              <span>
-                印章镜像翻转
-                <small>适用于橡皮章与木刻拓印，底稿与 1:1 导出同步水平镜像</small>
-              </span>
-            </label>
           </div>
 
           <div className="field carving-param-field">

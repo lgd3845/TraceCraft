@@ -221,7 +221,7 @@ describe("local artwork storage", () => {
     expect(readArtworks({ getItem: () => raw })).toEqual([updated]);
   });
 
-  it("supports optional embroidery removeBg and carving mirrorPrint flags cleanly", () => {
+  it("supports optional embroidery removeBg flag cleanly", () => {
     const legacyEmbroidery: Artwork = {
       id: "legacy-emb",
       kind: "embroidery",
@@ -244,44 +244,15 @@ describe("local artwork storage", () => {
       id: "cfg-emb",
       data: { ...legacyEmbroidery.data, removeBg: false },
     };
-    const legacyCarving: Artwork = {
-      id: "legacy-carv",
-      kind: "carving",
-      name: "旧雕刻",
-      thumbnail: "data:image/jpeg;base64,t",
-      createdAt: "2026-11-25T00:00:00.000Z",
-      data: {
-        sourceKind: "example",
-        exampleId: "portrait",
-        sourceName: "人像",
-        algorithm: "positive-stencil",
-        contrastMode: "portrait",
-        bridgeWidthMm: 1.8,
-        gridSize: 128,
-        frameSizeCm: 18,
-        materialId: "vermilion-paper",
-        framing: { zoom: 1, x: 0.5, y: 0.5 },
-      },
-    };
-    const configuredCarving: Artwork = {
-      ...legacyCarving,
-      id: "cfg-carv",
-      data: { ...legacyCarving.data, mirrorPrint: true },
-    };
 
     const parsed = readArtworks({
-      getItem: () => JSON.stringify([legacyEmbroidery, configuredEmbroidery, legacyCarving, configuredCarving]),
+      getItem: () => JSON.stringify([legacyEmbroidery, configuredEmbroidery]),
     });
-    expect(parsed).toEqual([legacyEmbroidery, configuredEmbroidery, legacyCarving, configuredCarving]);
+    expect(parsed).toEqual([legacyEmbroidery, configuredEmbroidery]);
 
     expect(() =>
       readArtworks({
         getItem: () => JSON.stringify([{ ...configuredEmbroidery, data: { ...configuredEmbroidery.data, removeBg: "yes" } }]),
-      }),
-    ).toThrow();
-    expect(() =>
-      readArtworks({
-        getItem: () => JSON.stringify([{ ...configuredCarving, data: { ...configuredCarving.data, mirrorPrint: "yes" } }]),
       }),
     ).toThrow();
   });

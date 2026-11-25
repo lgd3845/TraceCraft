@@ -124,8 +124,7 @@ function isArtwork(value: unknown): value is Artwork {
       typeof data.gridSize === "number" &&
       typeof data.frameSizeCm === "number" &&
       typeof data.materialId === "string" &&
-      isValidFraming(data.framing) &&
-      (data.mirrorPrint === undefined || typeof data.mirrorPrint === "boolean")
+      isValidFraming(data.framing)
     );
   }
   return false;
