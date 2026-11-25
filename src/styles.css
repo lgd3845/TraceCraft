@@ -1,7 +1,9 @@
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;450;500;550;600;650;700;750&family=Plus+Jakarta+Sans:wght@400;500;600;650;700;750;800&display=swap");
-
 :root {
-  font-family: "Plus Jakarta Sans", "Noto Sans SC", sans-serif;
+  --font-sans:
+    "Plus Jakarta Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC",
+    "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", "Sarasa Gothic SC",
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   color: #35392f;
   background: #f8f9f6;
   font-synthesis: none;
@@ -402,7 +404,7 @@ a {
 .welcome-note span {
   font-size: 12px;
   line-height: 1.7;
-  font-family: "Noto Sans SC", sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: 1px;
 }
 .welcome-note > svg:last-child {

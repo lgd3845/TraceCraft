@@ -278,9 +278,14 @@ export default function WireCraftStudio() {
           })
         }
       })
-      .catch(() => { /* fallback example remains usable */ })
+      .catch(() => {
+        if (!cancelled && mounted.current && id === requestId.current) {
+          setError('已保存的作品源图已缺失或无法读取，已暂时显示示例图，你可以重新上传照片后更新保存。')
+          notify('已保存的作品源图缺失，已暂时显示示例图，可重新上传照片恢复。')
+        }
+      })
     return () => { cancelled = true }
-  }, [savedWork])
+  }, [savedWork, notify])
 
   useEffect(() => {
     if (

@@ -382,3 +382,56 @@ test("直接打开旧照片作品后台迁移时切换示例不会被回弹覆�
   await expect(page.getByRole("button", { name: "导出图纸", exact: true })).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("首页与工坊不发起外网字体请求", async ({ page }) => {
+  const fontRequests: string[] = [];
+  page.on("request", (req) => {
+    if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(req.url())) {
+      fontRequests.push(req.url());
+    }
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "小小手作，大大心意。" })).toBeVisible();
+  await page.goto("/?studio=carving");
+  await expect(page.getByRole("heading", { name: "雕刻画工坊" })).toBeVisible();
+  expect(fontRequests).toEqual([]);
+});
+
+test("作品源图媒体丢失时显示明确提示并保持示例可用", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const thumb = canvas.toDataURL("image/png");
+    const brokenWork = {
+      id: "missing-media-work",
+      name: "源图丢失作品",
+      kind: "carving",
+      thumbnail: thumb,
+      createdAt: "2026-11-20T00:00:00.000Z",
+      data: {
+        sourceKind: "photo",
+        sourceName: "missing.png",
+        photoDataUrl: "idb:non-existent-blob-id",
+        algorithm: "positive-stencil",
+        contrastMode: "portrait",
+        bridgeWidthMm: 1.8,
+        gridSize: 128,
+        frameSizeCm: 20,
+        materialId: "vermilion-paper",
+        framing: { zoom: 1, x: 0.5, y: 0.5 },
+      },
+    };
+    localStorage.setItem("tracecraft.artworks.v1", JSON.stringify([brokenWork]));
+  });
+
+  await page.goto("/?studio=carving&work=missing-media-work");
+  await expect(page.locator(".carving-error")).toBeVisible();
+  await expect(page.locator(".carving-error")).toContainText(/源图已缺失|无法读取/);
+  await expect(page.getByRole("button", { name: "导出图纸", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
