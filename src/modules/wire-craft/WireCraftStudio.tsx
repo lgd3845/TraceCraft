@@ -21,8 +21,9 @@ import {
 } from 'lucide-react'
 import ExportArtworkModal from '../../components/ExportArtworkModal'
 import SaveArtworkModal from '../../components/SaveArtworkModal'
-import { canvasThumbnailDataUrl, compressImageForStorage, loadImageFromDataUrl } from '../../lib/artworkImage'
+import { canvasThumbnailDataUrl, compressImageForStorage, loadStoredPhoto } from '../../lib/artworkImage'
 import { downloadFile } from '../../lib/export'
+import { isMediaRef } from '../../lib/mediaStore'
 import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
 import { readStepProgress, writeStepProgress } from '../../lib/storage'
 import { useStudio } from '../../lib/studio'
@@ -93,6 +94,11 @@ export default function WireCraftStudio() {
     editingArtwork?.kind === 'wire-craft' ? editingArtwork.id : undefined,
   )
   const savedIdRef = useRef<string | undefined>(savedId)
+  const savedPhotoRef = useRef<{ uploadId: string; ref: string } | null>(
+    savedWork?.sourceKind === 'photo' && isMediaRef(savedWork.photoDataUrl)
+      ? { uploadId: `saved:${editingArtwork?.id ?? 'work'}`, ref: savedWork.photoDataUrl }
+      : null,
+  )
   const [source, setSource] = useState<SourceState>(() => {
     const fallbackEx = STRING_EXAMPLES[0]
     if (savedWork?.sourceKind === 'example') {
@@ -257,15 +263,15 @@ export default function WireCraftStudio() {
   useEffect(() => {
     if (savedWork?.sourceKind !== 'photo' || !savedWork.photoDataUrl) return
     let cancelled = false
-    void loadImageFromDataUrl(savedWork.photoDataUrl)
-      .then(image => {
+    void loadStoredPhoto(savedWork.photoDataUrl)
+      .then(({ image, preview }) => {
         if (!cancelled && mounted.current) {
           setSource({
             kind: 'photo',
             uploadId: `saved:${editingArtwork?.id ?? 'work'}`,
             name: savedWork.sourceName,
             image,
-            preview: savedWork.photoDataUrl!,
+            preview,
           })
         }
       })
@@ -463,15 +469,20 @@ export default function WireCraftStudio() {
     downloadFile(png, `${safeStringArtFilename(title)}-绕线画图纸.png`, 'image/png')
   }
 
-  function confirmSave(trimmed: string) {
+  async function confirmSave(trimmed: string) {
     if (!canUsePlan || previewError) return
     try {
       const thumbnail = boardCanvas.current ? canvasThumbnailDataUrl(boardCanvas.current) : ''
+      const photoRef = source.kind === 'photo'
+        ? (savedPhotoRef.current?.uploadId === source.uploadId
+            ? savedPhotoRef.current.ref
+            : compressImageForStorage(source.image))
+        : undefined
       const data: WireCraftArtworkData = {
         sourceKind: source.kind,
         exampleId: source.kind === 'example' ? source.id : undefined,
         sourceName: source.kind === 'photo' ? source.name : source.label,
-        photoDataUrl: source.kind === 'photo' ? compressImageForStorage(source.image) : undefined,
+        photoDataUrl: photoRef,
         layoutMode,
         colorWeaveMode,
         contrastMode,
@@ -483,16 +494,21 @@ export default function WireCraftStudio() {
         usePhotoColors,
         framing,
       }
-      const saved = saveArtwork({ kind: 'wire-craft', name: trimmed, data, thumbnail }, savedIdRef.current)
+      const saved = await saveArtwork({ kind: 'wire-craft', name: trimmed, data, thumbnail }, savedIdRef.current)
+      if (!mounted.current) return
       if (!saved) {
         setSaveDialogOpen(false)
         return
+      }
+      if (source.kind === 'photo' && saved.kind === 'wire-craft' && saved.data.photoDataUrl) {
+        savedPhotoRef.current = { uploadId: source.uploadId, ref: saved.data.photoDataUrl }
       }
       savedIdRef.current = saved.id
       setSavedId(saved.id)
       setTitle(saved.name)
       setSaveDialogOpen(false)
     } catch {
+      if (!mounted.current) return
       notify('保存失败，请先导出模板与绕线清单。')
       setSaveDialogOpen(false)
     }

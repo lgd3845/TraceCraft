@@ -183,13 +183,14 @@ export default function BeadsStudio() {
     setSaveDialogOpen(true)
   }
 
-  function confirmSave(trimmed: string) {
+  async function confirmSave(trimmed: string) {
     if (unavailable) return
     try {
-      const saved = saveArtwork(
+      const saved = await saveArtwork(
         { kind: 'beads', name: trimmed, data: cloneBeads(data), thumbnail: thumbnailPng(data) },
         savedIdRef.current,
       )
+      if (!mounted.current) return
       if (!saved) {
         setSaveDialogOpen(false)
         return
@@ -199,6 +200,7 @@ export default function BeadsStudio() {
       setName(saved.name)
       setSaveDialogOpen(false)
     } catch (cause) {
+      if (!mounted.current) return
       notify(messageFrom(cause, '保存失败，请先导出图纸与材料清单。'))
       setSaveDialogOpen(false)
     }

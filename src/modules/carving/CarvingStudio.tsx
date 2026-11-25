@@ -20,8 +20,9 @@ import {
 } from 'lucide-react'
 import ExportArtworkModal from '../../components/ExportArtworkModal'
 import SaveArtworkModal from '../../components/SaveArtworkModal'
-import { canvasThumbnailDataUrl, compressImageForStorage, loadImageFromDataUrl } from '../../lib/artworkImage'
+import { canvasThumbnailDataUrl, compressImageForStorage, loadStoredPhoto } from '../../lib/artworkImage'
 import { downloadFile } from '../../lib/export'
+import { isMediaRef } from '../../lib/mediaStore'
 import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
 import { readStepProgress, writeStepProgress } from '../../lib/storage'
 import { useStudio } from '../../lib/studio'
@@ -113,6 +114,11 @@ export default function CarvingStudio() {
     editingArtwork?.kind === 'carving' ? editingArtwork.id : undefined,
   )
   const savedIdRef = useRef<string | undefined>(savedId)
+  const savedPhotoRef = useRef<{ uploadId: string; ref: string } | null>(
+    savedWork?.sourceKind === 'photo' && isMediaRef(savedWork.photoDataUrl)
+      ? { uploadId: `saved:${editingArtwork?.id ?? 'work'}`, ref: savedWork.photoDataUrl }
+      : null,
+  )
   const [source, setSource] = useState<SourceState>(() => {
     const fallbackEx = CARVING_EXAMPLES[0]
     if (savedWork?.sourceKind === 'example') {
@@ -257,15 +263,15 @@ export default function CarvingStudio() {
   useEffect(() => {
     if (savedWork?.sourceKind !== 'photo' || !savedWork.photoDataUrl) return
     let cancelled = false
-    void loadImageFromDataUrl(savedWork.photoDataUrl)
-      .then(image => {
+    void loadStoredPhoto(savedWork.photoDataUrl)
+      .then(({ image, preview }) => {
         if (!cancelled && mounted.current) {
           setSource({
             kind: 'photo',
             uploadId: `saved:${editingArtwork?.id ?? 'work'}`,
             name: savedWork.sourceName,
             image,
-            preview: savedWork.photoDataUrl!,
+            preview,
           })
         }
       })
@@ -460,15 +466,20 @@ export default function CarvingStudio() {
     return plan.steps.slice(start, end)
   }, [plan.steps, currentStep, listFilter])
 
-  function confirmSave(trimmed: string) {
+  async function confirmSave(trimmed: string) {
     if (!canUsePlan || previewError) return
     try {
       const thumbnail = boardCanvas.current ? canvasThumbnailDataUrl(boardCanvas.current) : ''
+      const photoRef = source.kind === 'photo'
+        ? (savedPhotoRef.current?.uploadId === source.uploadId
+            ? savedPhotoRef.current.ref
+            : compressImageForStorage(source.image))
+        : undefined
       const data: CarvingArtworkData = {
         sourceKind: source.kind,
         exampleId: source.kind === 'example' ? source.id : undefined,
         sourceName: source.kind === 'photo' ? source.name : source.label,
-        photoDataUrl: source.kind === 'photo' ? compressImageForStorage(source.image) : undefined,
+        photoDataUrl: photoRef,
         algorithm,
         contrastMode,
         bridgeWidthMm,
@@ -477,16 +488,21 @@ export default function CarvingStudio() {
         materialId,
         framing,
       }
-      const saved = saveArtwork({ kind: 'carving', name: trimmed, data, thumbnail }, savedIdRef.current)
+      const saved = await saveArtwork({ kind: 'carving', name: trimmed, data, thumbnail }, savedIdRef.current)
+      if (!mounted.current) return
       if (!saved) {
         setSaveDialogOpen(false)
         return
+      }
+      if (source.kind === 'photo' && saved.kind === 'carving' && saved.data.photoDataUrl) {
+        savedPhotoRef.current = { uploadId: source.uploadId, ref: saved.data.photoDataUrl }
       }
       savedIdRef.current = saved.id
       setSavedId(saved.id)
       setTitle(saved.name)
       setSaveDialogOpen(false)
     } catch {
+      if (!mounted.current) return
       notify('保存失败，请先导出底稿与下刀清单。')
       setSaveDialogOpen(false)
     }

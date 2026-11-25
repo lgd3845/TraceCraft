@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { readArtworks, STORAGE_KEY, writeArtworks } from "./storage";
+import {
+  collectArtworkMediaIds,
+  getArtworkPhotoRef,
+  MAX_ARTWORKS,
+  readArtworks,
+  STORAGE_KEY,
+  withArtworkPhotoRef,
+  writeArtworks,
+} from "./storage";
 import type { Artwork } from "./types";
 
 const artwork: Artwork = {
@@ -174,5 +182,42 @@ describe("local artwork storage", () => {
         [artwork],
       ),
     ).toThrow("quota");
+  });
+
+  it("extracts, updates, and collects IndexedDB photo refs across artwork kinds", () => {
+    expect(MAX_ARTWORKS).toBeGreaterThanOrEqual(80);
+    const wireWork: Artwork = {
+      id: "wire-photo",
+      kind: "wire-craft",
+      name: "照片绕线",
+      thumbnail: "data:image/jpeg;base64,t",
+      createdAt: "2026-11-25T00:00:00.000Z",
+      data: {
+        sourceKind: "photo",
+        sourceName: "face.jpg",
+        photoDataUrl: "idb:wire-photo-123",
+        layoutMode: "ring",
+        colorWeaveMode: "mono",
+        contrastMode: "portrait",
+        pegCount: 200,
+        stepCount: 3200,
+        threadDarkness: 0.04,
+        boardSizeCm: 20,
+        paletteId: "classic-noir",
+        usePhotoColors: false,
+        framing: { zoom: 1, x: 0.5, y: 0.5 },
+      },
+    };
+
+    expect(getArtworkPhotoRef(artwork)).toBeUndefined();
+    expect(getArtworkPhotoRef(wireWork)).toBe("idb:wire-photo-123");
+
+    const updated = withArtworkPhotoRef(wireWork, "idb:wire-photo-456");
+    expect(getArtworkPhotoRef(updated)).toBe("idb:wire-photo-456");
+    expect(Array.from(collectArtworkMediaIds([artwork, updated]))).toEqual(["wire-photo-456"]);
+
+    let raw = "";
+    writeArtworks({ setItem: (_k, v) => { raw = v; } }, [updated]);
+    expect(readArtworks({ getItem: () => raw })).toEqual([updated]);
   });
 });

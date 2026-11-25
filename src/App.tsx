@@ -16,7 +16,23 @@ import {
 import Home from "./components/Home";
 import Library from "./components/Library";
 import { StudioContext } from "./lib/studio";
-import { readArtworks, STORAGE_KEY, writeArtworks } from "./lib/storage";
+import {
+  dataUrlToBlob,
+  deleteMediaBlobs,
+  parseMediaRef,
+  pruneUnusedMediaBlobs,
+  putMediaBlob,
+  toMediaRef,
+} from "./lib/mediaStore";
+import {
+  collectArtworkMediaIds,
+  getArtworkPhotoRef,
+  MAX_ARTWORKS,
+  readArtworks,
+  STORAGE_KEY,
+  withArtworkPhotoRef,
+  writeArtworks,
+} from "./lib/storage";
 import type { Artwork, ArtworkDraft, Route } from "./lib/types";
 
 const BeadsStudio = lazy(() => import("./modules/beads/BeadsStudio"));
@@ -113,22 +129,104 @@ export default function App() {
     document.title = `${routeNames[route]} · TraceCraft 造物工坊`;
   }, [route]);
 
+  useEffect(() => {
+    if (corruptBackupPending.current) return;
+    let cancelled = false;
+    const initialList = artworksRef.current;
+    const legacyEntries = initialList
+      .map((work) => ({ id: work.id, ref: getArtworkPhotoRef(work) }))
+      .filter((entry): entry is { id: string; ref: string } => Boolean(entry.ref && entry.ref.startsWith("data:")));
+
+    const runMaintenance = async () => {
+      if (legacyEntries.length > 0) {
+        const replacements = new Map<string, { oldRef: string; newRef: string }>();
+        for (const entry of legacyEntries) {
+          if (cancelled) return;
+          try {
+            const mediaId = `${entry.id}-${crypto.randomUUID().slice(0, 8)}`;
+            const stored = await putMediaBlob(mediaId, dataUrlToBlob(entry.ref));
+            if (stored) {
+              replacements.set(entry.id, { oldRef: entry.ref, newRef: toMediaRef(mediaId) });
+            }
+          } catch {
+            // Keep inline fallback if migration of this entry fails
+          }
+        }
+        if (cancelled) return;
+        if (replacements.size > 0) {
+          const latest = artworksRef.current;
+          let changed = false;
+          const migrated = latest.map((work) => {
+            const patch = replacements.get(work.id);
+            if (!patch || getArtworkPhotoRef(work) !== patch.oldRef) return work;
+            changed = true;
+            return withArtworkPhotoRef(work, patch.newRef);
+          });
+          if (changed) {
+            try {
+              writeArtworks(localStorage, migrated);
+              artworksRef.current = migrated;
+              setArtworks(migrated);
+            } catch {
+              // Skip updating index if localStorage write fails during quiet background migration
+            }
+          }
+        }
+      }
+      if (!cancelled) {
+        await pruneUnusedMediaBlobs(collectArtworkMediaIds(artworksRef.current));
+      }
+    };
+
+    void runMaintenance();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const saveArtwork = useCallback(
-    (draft: ArtworkDraft, existingId?: string) => {
+    async (draft: ArtworkDraft, existingId?: string): Promise<Artwork | null> => {
       if (!draft.name.trim()) {
         notify("先给这份作品起个名字吧。");
         return null;
       }
-      const currentArtworks = artworksRef.current;
-      const existing = currentArtworks.find((work) => work.id === existingId);
-      if (!existing && currentArtworks.length >= 40) {
+      const initialArtworks = artworksRef.current;
+      const initialExisting = initialArtworks.find((work) => work.id === existingId);
+      if (!initialExisting && initialArtworks.length >= MAX_ARTWORKS) {
         notify("作品库已满，请先导出并删除不再需要的作品。");
         return null;
       }
+
+      const artworkId = initialExisting?.id ?? crypto.randomUUID();
+      let preparedDraft = draft;
+      let writtenMediaId: string | null = null;
+      const rawPhotoRef = getArtworkPhotoRef(draft);
+      if (rawPhotoRef && rawPhotoRef.startsWith("data:")) {
+        try {
+          const candidateId = `${artworkId}-${crypto.randomUUID().slice(0, 8)}`;
+          const stored = await putMediaBlob(candidateId, dataUrlToBlob(rawPhotoRef));
+          if (stored) {
+            writtenMediaId = candidateId;
+            preparedDraft = withArtworkPhotoRef(draft, toMediaRef(candidateId));
+          }
+        } catch {
+          // Keep compressed inline DataURL fallback if IndexedDB is unavailable
+        }
+      }
+
+      const currentArtworks = artworksRef.current;
+      const existing = currentArtworks.find((work) => work.id === existingId);
+      if (!existing && currentArtworks.length >= MAX_ARTWORKS) {
+        if (writtenMediaId) void deleteMediaBlobs([writtenMediaId]);
+        notify("作品库已满，请先导出并删除不再需要的作品。");
+        return null;
+      }
+      const prevPhotoRef = existing ? getArtworkPhotoRef(existing) : undefined;
+      const prevMediaId = prevPhotoRef ? parseMediaRef(prevPhotoRef) : null;
       const artwork = {
-        ...draft,
-        name: draft.name.trim().slice(0, 60),
-        id: existing?.id ?? crypto.randomUUID(),
+        ...preparedDraft,
+        name: preparedDraft.name.trim().slice(0, 60),
+        id: existing?.id ?? artworkId,
         createdAt: new Date().toISOString(),
       } as Artwork;
       const next = [
@@ -150,9 +248,13 @@ export default function App() {
         corruptBackupPending.current = false;
         artworksRef.current = next;
         setArtworks(next);
+        if (prevMediaId && !collectArtworkMediaIds(next).has(prevMediaId)) {
+          void deleteMediaBlobs([prevMediaId]);
+        }
         notify("心意已收藏，随时可以继续创作。");
         return artwork;
       } catch {
+        if (writtenMediaId) void deleteMediaBlobs([writtenMediaId]);
         notify("保存失败：浏览器存储空间不足或已被禁用，请先导出作品。");
         return null;
       }
@@ -162,11 +264,17 @@ export default function App() {
 
   const deleteArtwork = useCallback(
     (id: string) => {
+      const removed = artworksRef.current.find((work) => work.id === id);
+      const removedPhotoRef = removed ? getArtworkPhotoRef(removed) : undefined;
+      const removedMediaId = removedPhotoRef ? parseMediaRef(removedPhotoRef) : null;
       const next = artworksRef.current.filter((work) => work.id !== id);
       try {
         writeArtworks(localStorage, next);
         artworksRef.current = next;
         setArtworks(next);
+        if (removedMediaId && !collectArtworkMediaIds(next).has(removedMediaId)) {
+          void deleteMediaBlobs([removedMediaId]);
+        }
         notify("作品已删除。");
       } catch {
         notify("删除失败，请检查浏览器存储权限。");

@@ -22,8 +22,9 @@ import {
 } from 'lucide-react'
 import ExportArtworkModal from '../../components/ExportArtworkModal'
 import SaveArtworkModal from '../../components/SaveArtworkModal'
-import { canvasThumbnailDataUrl, compressImageForStorage, loadImageFromDataUrl } from '../../lib/artworkImage'
+import { canvasThumbnailDataUrl, compressImageForStorage, loadStoredPhoto } from '../../lib/artworkImage'
 import { downloadFile } from '../../lib/export'
+import { isMediaRef } from '../../lib/mediaStore'
 import { hasOpaquePixels, PersistentWorkerRunner } from '../../lib/persistentWorker'
 import { useStudio } from '../../lib/studio'
 import type { EmbroideryArtworkData } from '../../lib/types'
@@ -88,6 +89,11 @@ export default function EmbroideryStudio() {
     editingArtwork?.kind === 'embroidery' ? editingArtwork.id : undefined,
   )
   const savedIdRef = useRef<string | undefined>(savedId)
+  const savedPhotoRef = useRef<{ uploadId: string; ref: string } | null>(
+    savedWork?.sourceKind === 'photo' && isMediaRef(savedWork.photoDataUrl)
+      ? { uploadId: `saved:${editingArtwork?.id ?? 'work'}`, ref: savedWork.photoDataUrl }
+      : null,
+  )
   const [source, setSource] = useState<SourceState>(() => {
     const fallbackEx = EMBROIDERY_EXAMPLES[0]
     if (savedWork?.sourceKind === 'example') {
@@ -211,15 +217,15 @@ export default function EmbroideryStudio() {
   useEffect(() => {
     if (savedWork?.sourceKind !== 'photo' || !savedWork.photoDataUrl) return
     let cancelled = false
-    void loadImageFromDataUrl(savedWork.photoDataUrl)
-      .then(image => {
+    void loadStoredPhoto(savedWork.photoDataUrl)
+      .then(({ image, preview }) => {
         if (!cancelled && mounted.current) {
           setSource({
             kind: 'photo',
             uploadId: `saved:${editingArtwork?.id ?? 'work'}`,
             name: savedWork.sourceName,
             image,
-            preview: savedWork.photoDataUrl!,
+            preview,
           })
         }
       })
@@ -390,30 +396,40 @@ export default function EmbroideryStudio() {
     downloadFile(png, `${safeEmbroideryFilename(title)}-刺绣图纸.png`)
   }
 
-  function confirmSave(trimmed: string) {
+  async function confirmSave(trimmed: string) {
     try {
       const thumbnail = canvasRef.current ? canvasThumbnailDataUrl(canvasRef.current) : ''
+      const photoRef = source.kind === 'photo'
+        ? (savedPhotoRef.current?.uploadId === source.uploadId
+            ? savedPhotoRef.current.ref
+            : compressImageForStorage(source.image))
+        : undefined
       const data: EmbroideryArtworkData = {
         sourceKind: source.kind,
         exampleId: source.kind === 'example' ? source.id : undefined,
         sourceName: source.kind === 'photo' ? source.name : source.label,
-        photoDataUrl: source.kind === 'photo' ? compressImageForStorage(source.image) : undefined,
+        photoDataUrl: photoRef,
         stitchMode,
         gridSize,
         maxColors,
         hoopSizeCm,
         fabricId,
       }
-      const saved = saveArtwork({ kind: 'embroidery', name: trimmed, data, thumbnail }, savedIdRef.current)
+      const saved = await saveArtwork({ kind: 'embroidery', name: trimmed, data, thumbnail }, savedIdRef.current)
+      if (!mounted.current) return
       if (!saved) {
         setSaveDialogOpen(false)
         return
+      }
+      if (source.kind === 'photo' && saved.kind === 'embroidery' && saved.data.photoDataUrl) {
+        savedPhotoRef.current = { uploadId: source.uploadId, ref: saved.data.photoDataUrl }
       }
       savedIdRef.current = saved.id
       setSavedId(saved.id)
       setTitle(saved.name)
       setSaveDialogOpen(false)
     } catch {
+      if (!mounted.current) return
       notify('保存失败，请先导出图纸或线材清单。')
       setSaveDialogOpen(false)
     }

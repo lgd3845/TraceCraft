@@ -94,7 +94,7 @@ export interface StudioContextValue {
   route: Route;
   editingArtwork: Artwork | null;
   navigate: (route: Route, artworkId?: string) => void;
-  saveArtwork: (draft: ArtworkDraft, existingId?: string) => Artwork | null;
+  saveArtwork: (draft: ArtworkDraft, existingId?: string) => Artwork | null | Promise<Artwork | null>;
   deleteArtwork: (id: string) => void;
   notify: (message: string) => void;
 }

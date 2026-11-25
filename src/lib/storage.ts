@@ -1,6 +1,8 @@
-import type { Artwork } from "./types";
+import { parseMediaRef } from "./mediaStore";
+import type { Artwork, ArtworkDraft } from "./types";
 
 export const STORAGE_KEY = "tracecraft.artworks.v1";
+export const MAX_ARTWORKS = 100;
 
 const RETIRED_KINDS = new Set([
   "bracelet",
@@ -159,6 +161,33 @@ export function readStepProgress(storageKey: string, signature: string): number 
     // Optional progress persistence never blocks UI
   }
   return null;
+}
+
+export function getArtworkPhotoRef(artwork: Artwork | ArtworkDraft): string | undefined {
+  if (artwork.kind === "beads") return undefined;
+  return artwork.data.photoDataUrl;
+}
+
+export function withArtworkPhotoRef<T extends Artwork | ArtworkDraft>(artwork: T, photoDataUrl: string): T {
+  if (artwork.kind === "beads") return artwork;
+  return {
+    ...artwork,
+    data: {
+      ...artwork.data,
+      photoDataUrl,
+    },
+  };
+}
+
+export function collectArtworkMediaIds(artworks: readonly (Artwork | ArtworkDraft)[]): Set<string> {
+  const ids = new Set<string>();
+  for (const artwork of artworks) {
+    const ref = getArtworkPhotoRef(artwork);
+    if (!ref) continue;
+    const id = parseMediaRef(ref);
+    if (id) ids.add(id);
+  }
+  return ids;
 }
 
 export function writeStepProgress(storageKey: string, signature: string, step: number) {

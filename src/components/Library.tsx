@@ -80,7 +80,7 @@ export default function Library() {
                 className={`library-thumbnail ${work.kind}`}
                 onClick={() => navigate(work.kind, work.id)}
               >
-                <img src={work.thumbnail} alt={work.name} />
+                <img src={work.thumbnail} alt={work.name} loading="lazy" decoding="async" />
               </button>
               <div className="library-card-content">
                 <span className="eyebrow">{labels[work.kind]}</span>
