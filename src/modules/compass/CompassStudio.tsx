@@ -114,9 +114,10 @@ export default function CompassStudio() {
     editingArtwork?.kind === 'compass' ? editingArtwork.id : undefined,
   )
   const savedIdRef = useRef<string | undefined>(savedId)
+  const initialWorkId = useRef<string | undefined>(savedId)
   const savedPhotoRef = useRef<{ uploadId: string; ref: string } | null>(
     savedWork?.sourceKind === 'photo' && isMediaRef(savedWork.photoDataUrl)
-      ? { uploadId: `saved:${editingArtwork?.id ?? 'work'}`, ref: savedWork.photoDataUrl }
+      ? { uploadId: `saved:${initialWorkId.current ?? 'work'}`, ref: savedWork.photoDataUrl }
       : null,
   )
   const [source, setSource] = useState<SourceState>(() => {
@@ -271,12 +272,14 @@ export default function CompassStudio() {
   useEffect(() => {
     if (savedWork?.sourceKind !== 'photo' || !savedWork.photoDataUrl) return
     let cancelled = false
+    const id = ++requestId.current
+    const uploadId = `saved:${initialWorkId.current ?? 'work'}`
     void loadStoredPhoto(savedWork.photoDataUrl)
       .then(({ image, preview }) => {
-        if (!cancelled && mounted.current) {
+        if (!cancelled && mounted.current && id === requestId.current) {
           setSource({
             kind: 'photo',
-            uploadId: `saved:${editingArtwork?.id ?? 'work'}`,
+            uploadId,
             name: savedWork.sourceName,
             image,
             preview,
@@ -285,7 +288,22 @@ export default function CompassStudio() {
       })
       .catch(() => { /* fallback example remains usable */ })
     return () => { cancelled = true }
-  }, [savedWork, editingArtwork?.id])
+  }, [savedWork])
+
+  useEffect(() => {
+    if (
+      editingArtwork?.kind === 'compass' &&
+      editingArtwork.id === initialWorkId.current &&
+      editingArtwork.data.sourceKind === 'photo' &&
+      isMediaRef(editingArtwork.data.photoDataUrl) &&
+      !savedPhotoRef.current
+    ) {
+      savedPhotoRef.current = {
+        uploadId: `saved:${editingArtwork.id}`,
+        ref: editingArtwork.data.photoDataUrl,
+      }
+    }
+  }, [editingArtwork])
 
   useEffect(() => {
     if (!generationJob.payload) {

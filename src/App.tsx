@@ -82,6 +82,7 @@ export default function App() {
   const corruptBackupPending = useRef(initial.error);
   const [artworks, setArtworks] = useState<Artwork[]>(initial.artworks);
   const artworksRef = useRef(artworks);
+  const inFlightMediaIdsRef = useRef<Set<string>>(new Set());
   const [notification, setNotification] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const { route, artworkId } = location;
@@ -174,7 +175,22 @@ export default function App() {
         }
       }
       if (!cancelled) {
-        await pruneUnusedMediaBlobs(collectArtworkMediaIds(artworksRef.current));
+        const keepIds = collectArtworkMediaIds(artworksRef.current);
+        for (const id of inFlightMediaIdsRef.current) {
+          keepIds.add(id);
+        }
+        let skipPrune = false;
+        try {
+          const persisted = readArtworks(localStorage);
+          for (const id of collectArtworkMediaIds(persisted)) {
+            keepIds.add(id);
+          }
+        } catch {
+          skipPrune = true;
+        }
+        if (!skipPrune) {
+          await pruneUnusedMediaBlobs(keepIds);
+        }
       }
     };
 
@@ -202,61 +218,69 @@ export default function App() {
       let writtenMediaId: string | null = null;
       const rawPhotoRef = getArtworkPhotoRef(draft);
       if (rawPhotoRef && rawPhotoRef.startsWith("data:")) {
+        const candidateId = `${artworkId}-${crypto.randomUUID().slice(0, 8)}`;
+        inFlightMediaIdsRef.current.add(candidateId);
         try {
-          const candidateId = `${artworkId}-${crypto.randomUUID().slice(0, 8)}`;
           const stored = await putMediaBlob(candidateId, dataUrlToBlob(rawPhotoRef));
           if (stored) {
             writtenMediaId = candidateId;
             preparedDraft = withArtworkPhotoRef(draft, toMediaRef(candidateId));
+          } else {
+            inFlightMediaIdsRef.current.delete(candidateId);
           }
         } catch {
+          inFlightMediaIdsRef.current.delete(candidateId);
           // Keep compressed inline DataURL fallback if IndexedDB is unavailable
         }
       }
 
-      const currentArtworks = artworksRef.current;
-      const existing = currentArtworks.find((work) => work.id === existingId);
-      if (!existing && currentArtworks.length >= MAX_ARTWORKS) {
-        if (writtenMediaId) void deleteMediaBlobs([writtenMediaId]);
-        notify("作品库已满，请先导出并删除不再需要的作品。");
-        return null;
-      }
-      const prevPhotoRef = existing ? getArtworkPhotoRef(existing) : undefined;
-      const prevMediaId = prevPhotoRef ? parseMediaRef(prevPhotoRef) : null;
-      const artwork = {
-        ...preparedDraft,
-        name: preparedDraft.name.trim().slice(0, 60),
-        id: existing?.id ?? artworkId,
-        createdAt: new Date().toISOString(),
-      } as Artwork;
-      const next = [
-        artwork,
-        ...currentArtworks.filter((work) => work.id !== artwork.id),
-      ];
       try {
-        if (corruptBackupPending.current) {
-          try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (raw !== null) {
-              localStorage.setItem("tracecraft.artworks.corrupt-backup.v1", raw);
+        const currentArtworks = artworksRef.current;
+        const existing = currentArtworks.find((work) => work.id === existingId);
+        if (!existing && currentArtworks.length >= MAX_ARTWORKS) {
+          if (writtenMediaId) void deleteMediaBlobs([writtenMediaId]);
+          notify("作品库已满，请先导出并删除不再需要的作品。");
+          return null;
+        }
+        const prevPhotoRef = existing ? getArtworkPhotoRef(existing) : undefined;
+        const prevMediaId = prevPhotoRef ? parseMediaRef(prevPhotoRef) : null;
+        const artwork = {
+          ...preparedDraft,
+          name: preparedDraft.name.trim().slice(0, 60),
+          id: existing?.id ?? artworkId,
+          createdAt: new Date().toISOString(),
+        } as Artwork;
+        const next = [
+          artwork,
+          ...currentArtworks.filter((work) => work.id !== artwork.id),
+        ];
+        try {
+          if (corruptBackupPending.current) {
+            try {
+              const raw = localStorage.getItem(STORAGE_KEY);
+              if (raw !== null) {
+                localStorage.setItem("tracecraft.artworks.corrupt-backup.v1", raw);
+              }
+            } catch {
+              // Best-effort backup of unreadable data
             }
-          } catch {
-            // Best-effort backup of unreadable data
           }
+          writeArtworks(localStorage, next);
+          corruptBackupPending.current = false;
+          artworksRef.current = next;
+          setArtworks(next);
+          if (prevMediaId && !collectArtworkMediaIds(next).has(prevMediaId)) {
+            void deleteMediaBlobs([prevMediaId]);
+          }
+          notify("心意已收藏，随时可以继续创作。");
+          return artwork;
+        } catch {
+          if (writtenMediaId) void deleteMediaBlobs([writtenMediaId]);
+          notify("保存失败：浏览器存储空间不足或已被禁用，请先导出作品。");
+          return null;
         }
-        writeArtworks(localStorage, next);
-        corruptBackupPending.current = false;
-        artworksRef.current = next;
-        setArtworks(next);
-        if (prevMediaId && !collectArtworkMediaIds(next).has(prevMediaId)) {
-          void deleteMediaBlobs([prevMediaId]);
-        }
-        notify("心意已收藏，随时可以继续创作。");
-        return artwork;
-      } catch {
-        if (writtenMediaId) void deleteMediaBlobs([writtenMediaId]);
-        notify("保存失败：浏览器存储空间不足或已被禁用，请先导出作品。");
-        return null;
+      } finally {
+        if (writtenMediaId) inFlightMediaIdsRef.current.delete(writtenMediaId);
       }
     },
     [notify],

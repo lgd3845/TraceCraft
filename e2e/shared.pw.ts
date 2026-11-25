@@ -267,3 +267,118 @@ test("旧版内联图片数据在加载后静默迁入 IndexedDB 且可继续编
   await expect(page.getByRole("button", { name: "导出图纸", exact: true })).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("IndexedDB 不可用时自动降级为内联存储并可刷新恢复", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.addInitScript(() => {
+    Object.defineProperty(IDBFactory.prototype, "open", {
+      configurable: true,
+      value() {
+        throw new DOMException("IndexedDB disabled", "SecurityError");
+      },
+    });
+  });
+
+  await page.goto("/?studio=carving");
+  const photoBase64 = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 96;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#f7f4ec";
+    ctx.fillRect(0, 0, 96, 96);
+    ctx.fillStyle = "#2b2a27";
+    ctx.beginPath();
+    ctx.arc(48, 48, 28, 0, Math.PI * 2);
+    ctx.fill();
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page
+    .locator('input[aria-label="选择雕刻画来源图片"]')
+    .setInputFiles({
+      name: "fallback-test.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(photoBase64, "base64"),
+    });
+  await expect(page.locator(".carving-board canvas")).toHaveAttribute("aria-label", /fallback-test/);
+  await expect(page.getByRole("button", { name: "导出图纸", exact: true })).toBeEnabled();
+
+  await page.getByRole("button", { name: "保存作品", exact: true }).click();
+  await page.getByRole("button", { name: "确认保存", exact: true }).click();
+  await expect(page.getByRole("button", { name: "更新作品", exact: true })).toBeVisible();
+
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("tracecraft.artworks.v1") || "[]"),
+  );
+  expect(saved).toHaveLength(1);
+  expect(saved[0].data.photoDataUrl).toMatch(/^data:image\//);
+
+  await page.goto("/?studio=library");
+  await page.getByRole("button", { name: /继续编辑/ }).click();
+  await expect(page).toHaveURL(/studio=carving&work=/);
+  const thumb = page.locator(".carving-source-image");
+  await expect(thumb).toBeVisible();
+  await expect(thumb).toHaveAttribute("src", /^data:image\//);
+  expect(
+    await thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
+  ).toBe(true);
+  await expect(page.getByRole("button", { name: "导出图纸", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test("直接打开旧照片作品后台迁移时切换示例不会被回弹覆盖", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = "#222222";
+    ctx.fillRect(16, 16, 32, 32);
+    const dataUrl = canvas.toDataURL("image/png");
+    const legacyWork = {
+      id: "legacy-direct-open",
+      name: "旧照片雕刻",
+      kind: "carving",
+      thumbnail: dataUrl,
+      createdAt: "2026-11-20T00:00:00.000Z",
+      data: {
+        sourceKind: "photo",
+        sourceName: "legacy-direct.png",
+        photoDataUrl: dataUrl,
+        algorithm: "positive-stencil",
+        contrastMode: "portrait",
+        bridgeWidthMm: 1.8,
+        gridSize: 128,
+        frameSizeCm: 20,
+        materialId: "ivory-papercut",
+        framing: { zoom: 1, x: 0.5, y: 0.5 },
+      },
+    };
+    localStorage.setItem("tracecraft.artworks.v1", JSON.stringify([legacyWork]));
+  });
+
+  await page.goto("/?studio=carving&work=legacy-direct-open");
+  const catButton = page.getByRole("button", { name: "窗台猫咪", exact: true });
+  await expect(catButton).toBeVisible();
+  await catButton.click();
+
+  await expect.poll(async () => {
+    const items = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("tracecraft.artworks.v1") || "[]"),
+    );
+    return items[0]?.data?.photoDataUrl ?? "";
+  }).toMatch(/^idb:/);
+
+  await expect(page.locator(".carving-source-image")).toHaveCount(0);
+  await expect(page.locator(".carving-board canvas")).toHaveAttribute("aria-label", /窗台月影猫咪/);
+  await expect(page.getByRole("button", { name: "导出图纸", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
