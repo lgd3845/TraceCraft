@@ -135,6 +135,12 @@ export default function WireCraftStudio() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
 
   const [busy, setBusy] = useState(false)
+  const [restoringSavedPhoto, setRestoringSavedPhoto] = useState<boolean>(() =>
+    Boolean(savedWork?.sourceKind === 'photo' && savedWork.photoDataUrl),
+  )
+  const [persistedUploadId, setPersistedUploadId] = useState<string | null>(() =>
+    savedWork?.sourceKind === 'photo' ? `saved:${initialWorkId.current ?? 'work'}` : null,
+  )
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const [previewError, setPreviewError] = useState('')
@@ -162,6 +168,13 @@ export default function WireCraftStudio() {
     const id = source.kind === 'example' ? `ex:${source.id}` : `ph:${source.uploadId}:${usePhotoColors ? 1 : 0}`
     return `linear-v1|${id}|${framing.zoom}:${framing.x}:${framing.y}|${layoutMode}|${colorWeaveMode}|${contrastMode}|${pegCount}|${stepCount}|${threadDarkness}|${boardSizeCm}|${paletteId}|${autoInvert ? 1 : 0}`
   }, [source, framing, layoutMode, colorWeaveMode, contrastMode, pegCount, stepCount, threadDarkness, boardSizeCm, paletteId, usePhotoColors, autoInvert])
+
+  const progressSignature = useMemo(() => {
+    if (source.kind !== 'photo' || !savedId || persistedUploadId !== source.uploadId) {
+      return sourceSignature
+    }
+    return sourceSignature.replace(`ph:${source.uploadId}`, `ph:saved:${savedId}`)
+  }, [sourceSignature, source, savedId, persistedUploadId])
 
   const sampledPhoto = useMemo(() => {
     if (source.kind !== 'photo') {
@@ -194,6 +207,7 @@ export default function WireCraftStudio() {
   }, [source, framing])
 
   const workerPayload = useMemo<StringArtWorkerRequest | null>(() => {
+    if (restoringSavedPhoto) return null
     const workerSource: StringArtWorkerRequest['source'] | null =
       source.kind === 'example' ? { kind: 'example', id: source.id } : sampledPhoto.source
     if (!workerSource) return null
@@ -212,6 +226,7 @@ export default function WireCraftStudio() {
       autoInvert,
     }
   }, [
+    restoringSavedPhoto,
     source,
     sampledPhoto.source,
     pegCount,
@@ -269,6 +284,7 @@ export default function WireCraftStudio() {
     void loadStoredPhoto(savedWork.photoDataUrl)
       .then(({ image, preview }) => {
         if (!cancelled && mounted.current && id === requestId.current) {
+          setRestoringSavedPhoto(false)
           setSource({
             kind: 'photo',
             uploadId,
@@ -280,6 +296,7 @@ export default function WireCraftStudio() {
       })
       .catch(() => {
         if (!cancelled && mounted.current && id === requestId.current) {
+          setRestoringSavedPhoto(false)
           setError('已保存的作品源图已缺失或无法读取，已暂时显示示例图，你可以重新上传照片后更新保存。')
           notify('已保存的作品源图缺失，已暂时显示示例图，可重新上传照片恢复。')
         }
@@ -339,8 +356,8 @@ export default function WireCraftStudio() {
   }, [generationJob])
 
   useEffect(() => {
-    if (isPlanCurrent) writeSavedProgress(sourceSignature, currentStep)
-  }, [isPlanCurrent, sourceSignature, currentStep])
+    if (isPlanCurrent) writeSavedProgress(progressSignature, currentStep)
+  }, [isPlanCurrent, progressSignature, currentStep])
 
   useEffect(() => {
     if (source.kind !== 'photo' || !photoFramingCanvas.current) return
@@ -422,6 +439,7 @@ export default function WireCraftStudio() {
   function chooseExample(id: StringExampleId) {
     const meta = STRING_EXAMPLES.find(item => item.id === id) ?? STRING_EXAMPLES[0]
     requestId.current++
+    setRestoringSavedPhoto(false)
     setBusy(false)
     setFraming(DEFAULT_PHOTO_FRAMING)
     setFramingError('')
@@ -438,6 +456,7 @@ export default function WireCraftStudio() {
     if (!file) return
     const id = ++requestId.current
     const uploadId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${id}-${Math.random().toString(36).slice(2)}`
+    setRestoringSavedPhoto(false)
     setBusy(true)
     setError('')
     try {
@@ -523,8 +542,11 @@ export default function WireCraftStudio() {
         setSaveDialogOpen(false)
         return
       }
-      if (source.kind === 'photo' && saved.kind === 'wire-craft' && saved.data.photoDataUrl) {
-        savedPhotoRef.current = { uploadId: source.uploadId, ref: saved.data.photoDataUrl }
+      if (source.kind === 'photo' && saved.kind === 'wire-craft') {
+        if (saved.data.photoDataUrl) {
+          savedPhotoRef.current = { uploadId: source.uploadId, ref: saved.data.photoDataUrl }
+        }
+        setPersistedUploadId(source.uploadId)
       }
       savedIdRef.current = saved.id
       setSavedId(saved.id)

@@ -158,6 +158,12 @@ export default function CompassStudio() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
 
   const [busy, setBusy] = useState(false)
+  const [restoringSavedPhoto, setRestoringSavedPhoto] = useState<boolean>(() =>
+    Boolean(savedWork?.sourceKind === 'photo' && savedWork.photoDataUrl),
+  )
+  const [persistedUploadId, setPersistedUploadId] = useState<string | null>(() =>
+    savedWork?.sourceKind === 'photo' ? `saved:${initialWorkId.current ?? 'work'}` : null,
+  )
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const [previewError, setPreviewError] = useState('')
@@ -182,6 +188,13 @@ export default function CompassStudio() {
     const id = source.kind === 'example' ? `ex:${source.id}` : `ph:${source.uploadId}:${usePhotoColors ? 1 : 0}`
     return `compass-v1|${id}|${framing.zoom}:${framing.x}:${framing.y}|${algorithm}|${colorMode}|${contrastMode}|${ringCount}|${paperSizeCm}|${paletteId}|${autoInvert ? 1 : 0}`
   }, [source, framing, algorithm, colorMode, contrastMode, ringCount, paperSizeCm, paletteId, usePhotoColors, autoInvert])
+
+  const progressSignature = useMemo(() => {
+    if (source.kind !== 'photo' || !savedId || persistedUploadId !== source.uploadId) {
+      return signature
+    }
+    return signature.replace(`ph:${source.uploadId}`, `ph:saved:${savedId}`)
+  }, [signature, source, savedId, persistedUploadId])
 
   const sampledPhoto = useMemo(() => {
     if (source.kind !== 'photo') {
@@ -214,6 +227,7 @@ export default function CompassStudio() {
   }, [source, framing])
 
   const workerPayload = useMemo<CompassWorkerRequest | null>(() => {
+    if (restoringSavedPhoto) return null
     const workerSource: CompassWorkerRequest['source'] | null =
       source.kind === 'example' ? { kind: 'example', id: source.id } : sampledPhoto.source
     if (!workerSource) return null
@@ -229,7 +243,7 @@ export default function CompassStudio() {
       usePhotoColors,
       autoInvert,
     }
-  }, [source, sampledPhoto.source, algorithm, ringCount, paperSizeCm, colorMode, contrastMode, palette, usePhotoColors, autoInvert])
+  }, [restoringSavedPhoto, source, sampledPhoto.source, algorithm, ringCount, paperSizeCm, colorMode, contrastMode, palette, usePhotoColors, autoInvert])
 
   const generationJob = useMemo(
     () => ({ signature, payload: workerPayload }),
@@ -277,6 +291,7 @@ export default function CompassStudio() {
     void loadStoredPhoto(savedWork.photoDataUrl)
       .then(({ image, preview }) => {
         if (!cancelled && mounted.current && id === requestId.current) {
+          setRestoringSavedPhoto(false)
           setSource({
             kind: 'photo',
             uploadId,
@@ -288,6 +303,7 @@ export default function CompassStudio() {
       })
       .catch(() => {
         if (!cancelled && mounted.current && id === requestId.current) {
+          setRestoringSavedPhoto(false)
           setError('已保存的作品源图已缺失或无法读取，已暂时显示示例图，你可以重新上传照片后更新保存。')
           notify('已保存的作品源图缺失，已暂时显示示例图，可重新上传照片恢复。')
         }
@@ -348,8 +364,8 @@ export default function CompassStudio() {
   }, [generationJob])
 
   useEffect(() => {
-    if (isPlanCurrent) writeSavedProgress(signature, currentStep)
-  }, [isPlanCurrent, signature, currentStep])
+    if (isPlanCurrent) writeSavedProgress(progressSignature, currentStep)
+  }, [isPlanCurrent, progressSignature, currentStep])
 
   useEffect(() => {
     if (source.kind !== 'photo' || !photoFramingCanvas.current) return
@@ -420,6 +436,7 @@ export default function CompassStudio() {
   function chooseExample(id: CompassExampleId) {
     const meta = COMPASS_EXAMPLES.find(item => item.id === id) ?? COMPASS_EXAMPLES[0]
     requestId.current++
+    setRestoringSavedPhoto(false)
     setBusy(false)
     setFraming(DEFAULT_PHOTO_FRAMING)
     setFramingError('')
@@ -436,6 +453,7 @@ export default function CompassStudio() {
     if (!file) return
     const id = ++requestId.current
     const uploadId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${id}-${Math.random().toString(36).slice(2)}`
+    setRestoringSavedPhoto(false)
     setBusy(true)
     setError('')
     try {
@@ -527,8 +545,11 @@ export default function CompassStudio() {
         setSaveDialogOpen(false)
         return
       }
-      if (source.kind === 'photo' && saved.kind === 'compass' && saved.data.photoDataUrl) {
-        savedPhotoRef.current = { uploadId: source.uploadId, ref: saved.data.photoDataUrl }
+      if (source.kind === 'photo' && saved.kind === 'compass') {
+        if (saved.data.photoDataUrl) {
+          savedPhotoRef.current = { uploadId: source.uploadId, ref: saved.data.photoDataUrl }
+        }
+        setPersistedUploadId(source.uploadId)
       }
       savedIdRef.current = saved.id
       setSavedId(saved.id)

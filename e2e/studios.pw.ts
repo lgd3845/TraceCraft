@@ -842,3 +842,43 @@ test('刺绣工坊支持记住跟绣进度与切换自动抠除背景并持久�
   await expect(page.getByRole('checkbox', { name: /自动抠除四角纯色背景/ })).not.toBeChecked()
   expect(errors).toEqual([])
 })
+
+test('照片作品保存后推进步数并在刷新重开后保留进度', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+
+  await page.goto('/?studio=embroidery')
+  const buffer = await fixtureImage(page)
+  await page.locator('input[aria-label="选择刺绣来源图片"]').setInputFiles({
+    name: 'progress-photo.png',
+    mimeType: 'image/png',
+    buffer,
+  })
+  await expect(page.locator('.embroidery-stage-card canvas')).toHaveAttribute('aria-label', /progress-photo/)
+  await expect(page.getByRole('button', { name: '导出图纸', exact: true })).toBeEnabled()
+
+  await page.getByRole('button', { name: '保存作品', exact: true }).click()
+  await page.locator('#embroidery-title').fill('照片跟绣进度')
+  await page.getByRole('button', { name: '确认保存' }).click()
+  await expect(page.getByRole('button', { name: '更新作品', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '分步跟绣教程', exact: true }).click()
+  const nextBtn = page.getByRole('button', { name: '下一针', exact: true })
+  await nextBtn.click()
+  await nextBtn.click()
+  await nextBtn.click()
+  await expect(page.locator('.embroidery-step-callout')).toContainText(/第 4 \/ \d+ 针/)
+
+  const savedId = await page.evaluate(() => {
+    const items = JSON.parse(localStorage.getItem('tracecraft.artworks.v1') || '[]')
+    return items[0]?.id as string
+  })
+  expect(savedId).toBeTruthy()
+
+  await page.goto(`/?studio=embroidery&work=${savedId}`)
+  await expect(page.locator('.embroidery-source-thumb')).toBeVisible()
+  await expect(page.getByRole('button', { name: '导出图纸', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '分步跟绣教程', exact: true }).click()
+  await expect(page.locator('.embroidery-step-callout')).toContainText(/第 4 \/ \d+ 针/)
+  expect(errors).toEqual([])
+})
